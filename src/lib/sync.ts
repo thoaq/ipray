@@ -1,6 +1,7 @@
 import { supabase, supabaseConfigured } from './supabaseClient';
 import { db } from './db';
 import { auth } from './auth.svelte';
+import { isSyncPaused } from './syncControl';
 
 // Push/Pull-Sync zwischen dem lokalen Cache (Dexie/IndexedDB) und Supabase.
 // Kein Echtzeit-Abgleich nötig — nur eine Person schreibt je ihre eigenen Zeilen,
@@ -12,7 +13,7 @@ let syncing = false;
 let pendingRerun = false;
 
 export function requestSync() {
-	if (typeof window === 'undefined') return;
+	if (typeof window === 'undefined' || isSyncPaused()) return;
 	void runSync();
 }
 
@@ -28,7 +29,7 @@ async function runSync() {
 		console.error('Sync fehlgeschlagen:', err);
 	} finally {
 		syncing = false;
-		if (pendingRerun) {
+		if (pendingRerun && !isSyncPaused()) {
 			pendingRerun = false;
 			void runSync();
 		}

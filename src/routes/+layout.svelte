@@ -46,13 +46,15 @@
 
 <div class="shell">
 	<header class="topbar">
-		<a class="brand" href="/">Gebetsraum</a>
-		<nav class="topnav">
-			<a href="/suche">Suche</a>
-			<a href="/favoriten">Favoriten</a>
-			<a href="/gebet/neu">+ Eigenes Gebet</a>
-			<a href="/konto">Konto</a>
+		<div class="row-brand">
+			<a class="brand" href="/">Gebetsraum</a>
 			<button type="button" class="theme-toggle" onclick={() => theme.cycle()}>{toggleLabel}</button>
+		</div>
+		<nav class="topnav">
+			<a href="/suche" class="icon-link" aria-label="Suche" title="Suche">🔍</a>
+			<a href="/favoriten">Favoriten</a>
+			<a href="/gebet/neu">+ Gebet</a>
+			<a href="/konto">Konto</a>
 		</nav>
 	</header>
 	<InstallHint />
@@ -75,13 +77,19 @@
 		top: 0;
 		z-index: 10;
 		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 1rem;
-		padding: 0.9rem clamp(1rem, 4vw, 2rem);
+		flex-direction: column;
+		gap: 0.55rem;
+		padding: 0.7rem clamp(1rem, 4vw, 2rem);
 		background: color-mix(in srgb, var(--paper-raised) 88%, transparent);
 		backdrop-filter: blur(8px);
 		border-bottom: 1px solid var(--line);
+	}
+
+	.row-brand {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
 	}
 
 	.brand {
@@ -106,6 +114,11 @@
 
 	.topnav a:hover {
 		color: var(--ink);
+	}
+
+	.icon-link {
+		font-size: 1.05rem;
+		line-height: 1;
 	}
 
 	.theme-toggle {

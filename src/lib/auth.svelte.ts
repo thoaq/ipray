@@ -1,5 +1,7 @@
 import type { Session } from '@supabase/supabase-js';
 import { supabase, supabaseConfigured } from './supabaseClient';
+import { db } from './db';
+import { pauseSync, resumeSync } from './syncControl';
 
 // Zugang über Einladungslink: anonyme Anmeldung ohne Passwort/E-Mail (siehe Konzept,
 // Architektur Schicht 2). Der "Wiederherstellungs-Code" für ein zweites Gerät ist
@@ -52,12 +54,28 @@ class AuthState {
 		if (!supabase) return { ok: false, error: 'Supabase ist noch nicht konfiguriert.' };
 		const trimmed = code.trim();
 		if (!trimmed) return { ok: false, error: 'Bitte einen Code eingeben.' };
-		const { data, error } = await supabase.auth.refreshSession({ refresh_token: trimmed });
-		if (error || !data.session) {
-			return { ok: false, error: error?.message ?? 'Code ungültig oder abgelaufen.' };
+
+		// Vorher merken: refreshSession() löst den onAuthStateChange-Listener bereits
+		// während des Aufrufs aus, der this.session sonst zu früh auf die neue Identität
+		// umstellen würde. Sync bleibt bis zum Aufräumen pausiert, damit kein zeitgleicher
+		// Sync-Lauf lokale Reste der alten Identität unter der neuen Identität pusht.
+		const previousUserId = this.session?.user?.id;
+		pauseSync();
+		try {
+			const { data, error } = await supabase.auth.refreshSession({ refresh_token: trimmed });
+			if (error || !data.session) {
+				return { ok: false, error: error?.message ?? 'Code ungültig oder abgelaufen.' };
+			}
+
+			if (previousUserId && previousUserId !== data.session.user.id) {
+				await Promise.all([db.prayers.clear(), db.favorites.clear(), db.syncMeta.clear()]);
+			}
+
+			this.session = data.session;
+			return { ok: true };
+		} finally {
+			resumeSync();
 		}
-		this.session = data.session;
-		return { ok: true };
 	}
 }
 

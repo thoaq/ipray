@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { auth } from '$lib/auth.svelte';
 	import { supabaseConfigured } from '$lib/supabaseClient';
+	import { personalPrayers } from '$lib/personalPrayers.svelte';
+	import { favorites } from '$lib/favorites.svelte';
 
 	let revealed = $state(false);
 	let copyState = $state<'idle' | 'copied'>('idle');
@@ -8,6 +10,25 @@
 	let restoreInput = $state('');
 	let restoreState = $state<'idle' | 'working' | 'error' | 'done'>('idle');
 	let restoreError = $state('');
+	let restorePending = $state(false);
+
+	const localPrayerCount = $derived(personalPrayers.items.length);
+	const localUnsyncedPrayerCount = $derived(personalPrayers.items.filter((p) => p.dirty === 1).length);
+	const localFavoriteCount = $derived(favorites.activeIds.size);
+	const hasLocalContent = $derived(localPrayerCount > 0 || localFavoriteCount > 0);
+
+	const restoreWarning = $derived.by(() => {
+		const parts: string[] = [];
+		if (localPrayerCount) parts.push(`${localPrayerCount} eigene ${localPrayerCount === 1 ? 'Gebet' : 'Gebete'}`);
+		if (localFavoriteCount) parts.push(`${localFavoriteCount} ${localFavoriteCount === 1 ? 'Favorit' : 'Favoriten'}`);
+		const summary = `Auf diesem Gerät ${parts.length > 1 ? 'sind' : localFavoriteCount ? 'sind' : 'ist'} aktuell ${parts.join(' und ')} gespeichert.`;
+		const consequence =
+			'Nach dem Verbinden zeigt dieses Gerät stattdessen den Stand des anderen Kontos — diese Inhalte sind hier danach nicht mehr zu sehen.';
+		const detail = localUnsyncedPrayerCount
+			? `${localUnsyncedPrayerCount} davon ${localUnsyncedPrayerCount === 1 ? 'ist' : 'sind'} noch nicht gesichert und ${localUnsyncedPrayerCount === 1 ? 'geht' : 'gehen'} dabei unwiederbringlich verloren.`
+			: 'Bereits gesicherte Inhalte bleiben unter dem bisherigen Konto in der Cloud erhalten.';
+		return `${summary} ${consequence} ${detail}`;
+	});
 
 	async function copyCode() {
 		if (!auth.recoveryCode) return;
@@ -32,7 +53,22 @@
 		setTimeout(() => (inviteState = 'idle'), 1800);
 	}
 
+	function attemptRestore() {
+		if (!restoreInput.trim()) return;
+		restoreError = '';
+		if (hasLocalContent) {
+			restorePending = true;
+		} else {
+			void restore();
+		}
+	}
+
+	function cancelRestore() {
+		restorePending = false;
+	}
+
 	async function restore() {
+		restorePending = false;
 		restoreState = 'working';
 		const result = await auth.restoreOnThisDevice(restoreInput);
 		if (result.ok) {
@@ -93,11 +129,20 @@
 			<p class="lede">Code von einem bereits eingerichteten Gerät hier eintragen, um dieselben Gebete zu laden.</p>
 			<div class="restore-row">
 				<input type="text" bind:value={restoreInput} placeholder="Wiederherstellungs-Code einfügen" />
-				<button type="button" class="primary" onclick={restore} disabled={restoreState === 'working'}>
+				<button type="button" class="primary" onclick={attemptRestore} disabled={restoreState === 'working'}>
 					Verbinden
 				</button>
 			</div>
-			{#if restoreState === 'error'}
+
+			{#if restorePending}
+				<div class="confirm">
+					<p>{restoreWarning}</p>
+					<div class="confirm-actions">
+						<button type="button" class="danger" onclick={restore}>Trotzdem verbinden</button>
+						<button type="button" class="secondary" onclick={cancelRestore}>Abbrechen</button>
+					</div>
+				</div>
+			{:else if restoreState === 'error'}
 				<p class="error">{restoreError}</p>
 			{:else if restoreState === 'done'}
 				<p class="success">Verbunden — deine Gebete werden gerade geladen.</p>
@@ -178,9 +223,32 @@
 		border: 1px solid var(--line);
 		color: var(--ink);
 	}
+	button.danger {
+		background: #a33b3b;
+		border: 1px solid #a33b3b;
+		color: #fff;
+	}
 	button:disabled {
 		opacity: 0.6;
 		cursor: default;
+	}
+	.confirm {
+		margin-top: 0.9rem;
+		border: 1px solid #d9b38c;
+		background: color-mix(in srgb, #a33b3b 6%, var(--paper-raised));
+		border-radius: 10px;
+		padding: 0.9rem 1rem;
+	}
+	.confirm p {
+		margin: 0 0 0.9rem;
+		font-size: 0.88rem;
+		color: var(--ink-soft);
+		line-height: 1.55;
+	}
+	.confirm-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.6rem;
 	}
 	.restore-row {
 		display: flex;
