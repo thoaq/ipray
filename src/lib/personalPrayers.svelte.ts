@@ -15,6 +15,8 @@ export interface PrayerFormInput {
 	imageFile?: File;
 	/** Pfad eines bereits hochgeladenen eigenen Bildes, das für dieses Gebet übernommen (kopiert) werden soll. */
 	existingImagePath?: string;
+	/** Mitgeliefertes Farbschema-Banner (statisches Asset) — wird direkt referenziert, kein Upload/Kopieren nötig. */
+	bannerImage?: { url: string; rolle: BildRolle; breite: number; hoehe: number };
 	bildPosition?: BildPosition;
 	/** Entfernt ein vorhandenes Bild, wenn keine neue Datei gewählt wurde (nur beim Bearbeiten relevant). */
 	removeImage?: boolean;
@@ -65,7 +67,7 @@ class PersonalPrayersState {
 				? await uploadPrayerImage(auth.userId, id, input.imageFile)
 				: input.existingImagePath && auth.userId
 					? await copyExistingPrayerImage(auth.userId, id, input.existingImagePath)
-					: input.existingImage;
+					: (input.bannerImage ?? input.existingImage);
 
 		await db.prayers.put({
 			id,
@@ -100,8 +102,9 @@ class PersonalPrayersState {
 				? await uploadPrayerImage(auth.userId, id, input.imageFile)
 				: input.existingImagePath && auth.userId
 					? await copyExistingPrayerImage(auth.userId, id, input.existingImagePath)
-					: undefined;
-		const keepExistingImage = !input.imageFile && !input.existingImagePath && !input.removeImage;
+					: input.bannerImage;
+		const keepExistingImage =
+			!input.imageFile && !input.existingImagePath && !input.bannerImage && !input.removeImage;
 
 		await db.prayers.put({
 			...existing,

@@ -101,8 +101,9 @@ Alle drei Tabellen sind über Row Level Security auf `auth.uid() = user_id` besc
 
 ## Design
 
-**Farbschemas** — sechs Schemas, je mit vier Rollen (Akzent, Akzent-mild, Wash, Linie) und
-eigenem Hell-/Dunkel-Wert, pro Kategorie zugewiesen (`src/lib/content/schemes.ts`):
+**Farbschemas** — zehn Schemas, je mit vier Rollen (Akzent, Akzent-mild, Wash, Linie) und
+eigenem Hell-/Dunkel-Wert (`src/lib/content/schemes.ts`). Sechs sind den mitgelieferten
+Kategorien fest zugewiesen, vier weitere stehen zusätzlich zur freien Wahl:
 
 | Schema | Verwendung |
 |---|---|
@@ -112,9 +113,14 @@ eigenem Hell-/Dunkel-Wert, pro Kategorie zugewiesen (`src/lib/content/schemes.ts
 | Herz-Jesu (Weinrot) | Herz-Jesu- & Passionsgebete |
 | Fasten (Violett) | Fasten- & Bußgebete |
 | Advent (Tannengrün) | Advent & Weihnachten |
+| Silber | zur freien Wahl |
+| Rosa | zur freien Wahl |
+| Dunkelrot | zur freien Wahl |
+| Dunkel-Blau | zur freien Wahl |
 
 Jede Person kann Name und Farbschema einer Kategorie für sich selbst anpassen
-(„✏️ Bearbeiten" auf der Kategorieseite).
+(„✏️ Bearbeiten" auf der Kategorieseite) — die vier zusätzlichen Schemas stehen dort für
+jede Kategorie als weitere Auswahl zur Verfügung.
 
 **Typografie:** „Fraunces" für Titel, „Public Sans" für Fließtext, „IBM Plex Mono" für
 Labels/Metadaten. Hell-/Dunkelmodus folgen automatisch der Systemeinstellung, manuell
@@ -133,13 +139,24 @@ Queries auf die verfügbare Spaltenbreite am Ort im Layout — nicht auf die Ger
 Bei „Bild" lässt sich die Position zusätzlich manuell auf „immer neben/über/unter dem Text"
 festlegen.
 
+**Bild-Quellen beim eigenen Gebet:** Neben eigenem Upload (Supabase Storage) und der
+Wiederverwendung eines bereits hochgeladenen eigenen Bildes (wird beim Übernehmen auf den
+eigenen Pfad kopiert, siehe [`imageUpload.ts`](src/lib/imageUpload.ts) — kein Verlinken auf
+denselben Storage-Pfad, damit das Ersetzen eines Bildes nicht heimlich auch andere Gebete
+verändert) steht als dritte, rein statische Quelle ein **Farbschema-Banner** zur Wahl: zu
+jedem der zehn Farbschemas liegt ein Paar Mosaik-Banner (Rolle „Banner breit"/„Banner hoch")
+unter [`static/schemes/`](static/schemes) bereit — mit der App ausgeliefert, ohne
+Supabase-Abhängigkeit, sofort offline verfügbar. Die Zuordnung Schema → Datei-Paar steht in
+[`schemeBanners.ts`](src/lib/content/schemeBanners.ts).
+
 ---
 
 ## Funktionen (Stand jetzt)
 
 - Kategorien, Tags, Volltextsuche (offline) — alles ohne Nachladen
 - Favoriten
-- Eigene Gebete hinzufügen, bearbeiten, löschen — inklusive Bild-Upload/Ersetzen/Entfernen
+- Eigene Gebete hinzufügen, bearbeiten, löschen — inklusive Bild-Upload/Ersetzen/Entfernen,
+  Wiederverwendung eigener Bilder oder Auswahl eines mitgelieferten Farbschema-Banners
 - **Jedes** Gebet bearbeitbar (kuratiert → persönliche Fassung; eigenes → direkt)
 - Kategorien bearbeitbar (Name, Farbschema) — persönlich, wirkt nicht auf andere
 - Teilen (native Teilen-Funktion / Link kopieren), Drucken/PDF über den Browser-Druckdialog

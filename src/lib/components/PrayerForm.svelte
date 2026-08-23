@@ -7,6 +7,7 @@
 	import { categoryOverrides } from '$lib/categoryOverrides.svelte';
 	import { configFor } from '$lib/content/categories';
 	import { listUserImages, type ExistingImageEntry } from '$lib/imageUpload';
+	import { schemeBanners, type SchemeBanner } from '$lib/content/schemeBanners';
 	import type { LocalPrayer } from '$lib/db';
 	import type { BildPosition, BildRolle } from '$lib/content/types';
 
@@ -50,6 +51,7 @@
 	let bildPosition = $state<BildPosition>(start?.bildPosition ?? 'auto');
 	let removeImage = $state(false);
 	let selectedExistingPath = $state<string | undefined>(undefined);
+	let bannerImage = $state<{ url: string; rolle: BildRolle; breite: number; hoehe: number } | undefined>(undefined);
 
 	let galleryOpen = $state(false);
 	let galleryLoading = $state(false);
@@ -74,6 +76,7 @@
 		const file = (e.target as HTMLInputElement).files?.[0];
 		imageFile = file;
 		selectedExistingPath = undefined;
+		bannerImage = undefined;
 		removeImage = false;
 		if (!file) {
 			imagePreview = start?.bildUrl ?? '';
@@ -93,6 +96,7 @@
 	function clearImage() {
 		imageFile = undefined;
 		selectedExistingPath = undefined;
+		bannerImage = undefined;
 		imagePreview = '';
 		imageRole = '';
 		removeImage = true;
@@ -101,7 +105,7 @@
 
 	async function toggleGallery() {
 		galleryOpen = !galleryOpen;
-		if (galleryOpen && galleryImages.length === 0 && !galleryLoading && auth.userId) {
+		if (galleryOpen && galleryImages.length === 0 && !galleryLoading && imageUploadAvailable && auth.userId) {
 			galleryLoading = true;
 			galleryError = '';
 			try {
@@ -117,6 +121,7 @@
 	function selectExistingImage(entry: ExistingImageEntry) {
 		imageFile = undefined;
 		selectedExistingPath = entry.path;
+		bannerImage = undefined;
 		removeImage = false;
 		imagePreview = entry.url;
 		imageRole = '';
@@ -126,6 +131,20 @@
 			imageRole = classifyImageRole(img.naturalWidth, img.naturalHeight);
 		};
 		img.src = entry.url;
+		galleryOpen = false;
+	}
+
+	/** Mitgeliefertes Mosaik-Banner wählen — rein statisches Asset, Rolle/Maße stehen schon fest,
+	 *  kein Upload/Kopieren nötig und unabhängig von einem verbundenen Supabase-Konto. */
+	function selectBanner(banner: SchemeBanner, orientation: 'breit' | 'hoch') {
+		const variant = banner[orientation];
+		imageFile = undefined;
+		selectedExistingPath = undefined;
+		bannerImage = { url: variant.url, rolle: variant.rolle, breite: variant.breite, hoehe: variant.hoehe };
+		removeImage = false;
+		imagePreview = variant.url;
+		imageRole = variant.rolle;
+		bildPosition = 'auto';
 		galleryOpen = false;
 	}
 
@@ -144,6 +163,7 @@
 			const existingImage =
 				!imageFile &&
 				!selectedExistingPath &&
+				!bannerImage &&
 				!removeImage &&
 				start?.bildUrl &&
 				start?.bildRolle &&
@@ -164,6 +184,7 @@
 				bodyText: bodyText.trim(),
 				imageFile,
 				existingImagePath: selectedExistingPath,
+				bannerImage,
 				bildPosition,
 				removeImage,
 				existingImage,
@@ -237,40 +258,75 @@
 		<input type="file" accept="image/*" disabled={!imageUploadAvailable} onchange={onImageChange} />
 	</label>
 
-	{#if imageUploadAvailable}
-		<button type="button" class="link-button" onclick={toggleGallery}>
-			{galleryOpen ? 'Galerie schließen' : 'Vorhandenes Bild wählen…'}
-		</button>
-	{/if}
+	<button type="button" class="link-button" onclick={toggleGallery}>
+		{galleryOpen ? 'Galerie schließen' : 'Bild aus Galerie wählen…'}
+	</button>
 
 	{#if galleryOpen}
 		<div class="gallery">
-			{#if galleryLoading}
-				<p class="hint">Lädt…</p>
-			{:else if galleryError}
-				<p class="error">{galleryError}</p>
-			{:else if galleryImages.length === 0}
-				<p class="hint">Noch keine eigenen Bilder hochgeladen.</p>
-			{:else}
-				<div class="gallery-grid">
-					{#each galleryImages as entry (entry.path)}
+			<div class="gallery-section">
+				<span class="gallery-label">Farbschema-Banner</span>
+				<p class="hint">Horizontal</p>
+				<div class="scheme-row">
+					{#each schemeBanners as banner (banner.key)}
 						<button
 							type="button"
-							class="gallery-item"
-							class:selected={selectedExistingPath === entry.path}
-							onclick={() => selectExistingImage(entry)}
+							class="scheme-item scheme-item-breit"
+							class:selected={bannerImage?.url === banner.breit.url}
+							title={banner.name}
+							aria-label={banner.name}
+							onclick={() => selectBanner(banner, 'breit')}
 						>
-							<img src={entry.url} alt="" loading="lazy" />
+							<img src={banner.breit.url} alt="" loading="lazy" />
 						</button>
 					{/each}
 				</div>
-			{/if}
+				<p class="hint">Vertikal</p>
+				<div class="scheme-row">
+					{#each schemeBanners as banner (banner.key)}
+						<button
+							type="button"
+							class="scheme-item scheme-item-hoch"
+							class:selected={bannerImage?.url === banner.hoch.url}
+							title={banner.name}
+							aria-label={banner.name}
+							onclick={() => selectBanner(banner, 'hoch')}
+						>
+							<img src={banner.hoch.url} alt="" loading="lazy" />
+						</button>
+					{/each}
+				</div>
+			</div>
+
+			<div class="gallery-section">
+				<span class="gallery-label">Eigene Bilder</span>
+				{#if !imageUploadAvailable}
+					<p class="hint">Eigene Bilder benötigen ein verbundenes Supabase-Projekt (siehe „Konto").</p>
+				{:else if galleryLoading}
+					<p class="hint">Lädt…</p>
+				{:else if galleryError}
+					<p class="error">{galleryError}</p>
+				{:else if galleryImages.length === 0}
+					<p class="hint">Noch keine eigenen Bilder hochgeladen.</p>
+				{:else}
+					<div class="gallery-grid">
+						{#each galleryImages as entry (entry.path)}
+							<button
+								type="button"
+								class="gallery-item"
+								class:selected={selectedExistingPath === entry.path}
+								onclick={() => selectExistingImage(entry)}
+							>
+								<img src={entry.url} alt="" loading="lazy" />
+							</button>
+						{/each}
+					</div>
+				{/if}
+			</div>
 		</div>
 	{/if}
 
-	{#if !imageUploadAvailable}
-		<p class="hint">Bilder benötigen ein verbundenes Supabase-Projekt (siehe „Konto").</p>
-	{:else if imagePreview}
+	{#if imagePreview}
 		<div class="preview">
 			<img src={imagePreview} alt="Vorschau" />
 			<div class="preview-controls">
@@ -293,6 +349,11 @@
 				<button type="button" class="link-button" onclick={clearImage}>Bild entfernen</button>
 			</div>
 		</div>
+	{:else if !imageUploadAvailable}
+		<p class="hint">
+			Foto-Upload und eigene Bilder benötigen ein verbundenes Supabase-Projekt (siehe „Konto") —
+			Farbschema-Banner sind unabhängig davon verfügbar.
+		</p>
 	{/if}
 
 	<label>
@@ -333,6 +394,50 @@
 	}
 	.gallery {
 		margin-top: -0.6rem;
+		display: flex;
+		flex-direction: column;
+		gap: 1.1rem;
+	}
+	.gallery-section {
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+	}
+	.gallery-label {
+		font-size: 0.82rem;
+		font-weight: 600;
+		color: var(--ink-soft);
+	}
+	.scheme-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.45rem;
+	}
+	.scheme-item {
+		padding: 0;
+		border: 2px solid transparent;
+		border-radius: 6px;
+		background: none;
+		cursor: pointer;
+		overflow: hidden;
+		flex: none;
+	}
+	.scheme-item img {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+	.scheme-item-breit {
+		width: 116px;
+		height: 29px;
+	}
+	.scheme-item-hoch {
+		width: 40px;
+		height: 100px;
+	}
+	.scheme-item.selected {
+		border-color: var(--accent);
 	}
 	.gallery-grid {
 		display: grid;

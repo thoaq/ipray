@@ -51,6 +51,30 @@ export const schemes: Record<string, Scheme> = {
 		name: 'Advent & Weihnachten',
 		light: { accent: '#3E6B52', accentSoft: '#D7E5DC', wash: '#EFF5F1', line: '#B8D0C2' },
 		dark: { accent: '#7FBE9C', accentSoft: '#1B2C22', wash: '#131E18', line: '#2C4636' }
+	},
+	silber: {
+		key: 'silber',
+		name: 'Silber',
+		light: { accent: '#6B7280', accentSoft: '#E2E4E8', wash: '#F4F5F6', line: '#CBD0D6' },
+		dark: { accent: '#B8BEC7', accentSoft: '#2A2D33', wash: '#1B1D21', line: '#454952' }
+	},
+	rosa: {
+		key: 'rosa',
+		name: 'Rosa',
+		light: { accent: '#C15B85', accentSoft: '#F3D9E3', wash: '#FCF1F5', line: '#E8BFD0' },
+		dark: { accent: '#E497B7', accentSoft: '#3A2430', wash: '#23151C', line: '#52323F' }
+	},
+	dunkelRot: {
+		key: 'dunkelRot',
+		name: 'Dunkelrot',
+		light: { accent: '#7A1E2E', accentSoft: '#E8CDD1', wash: '#F8EEEF', line: '#D9AEB4' },
+		dark: { accent: '#D97A88', accentSoft: '#35181C', wash: '#200F11', line: '#4F262B' }
+	},
+	dunkelBlau: {
+		key: 'dunkelBlau',
+		name: 'Dunkel-Blau',
+		light: { accent: '#1E3A5F', accentSoft: '#D3DCE6', wash: '#EDF1F5', line: '#B0C0D1' },
+		dark: { accent: '#6E97C4', accentSoft: '#1A2635', wash: '#111925', line: '#2C3E54' }
 	}
 };
 
