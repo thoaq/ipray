@@ -44,8 +44,10 @@ async function syncNow() {
 
 	await pushPrayers(userId);
 	await pushFavorites(userId);
+	await pushCategoryOverrides(userId);
 	await pullPrayers(userId);
 	await pullFavorites(userId);
+	await pullCategoryOverrides(userId);
 }
 
 async function pushPrayers(userId: string) {
@@ -67,6 +69,7 @@ async function pushPrayers(userId: string) {
 			bild_breite: p.bildBreite ?? null,
 			bild_hoehe: p.bildHoehe ?? null,
 			bild_position: p.bildPosition ?? 'auto',
+			overrides_slug: p.overridesSlug ?? null,
 			updated_at: p.updatedAt,
 			deleted_at: p.deletedAt ?? null
 		});
@@ -87,6 +90,23 @@ async function pushFavorites(userId: string) {
 		});
 		if (error) console.error('Push (favorites) fehlgeschlagen:', error.message);
 		else await db.favorites.update(f.itemId, { dirty: 0 });
+	}
+}
+
+async function pushCategoryOverrides(userId: string) {
+	if (!supabase) return;
+	const dirty = await db.categoryOverrides.where('dirty').equals(1).toArray();
+	for (const c of dirty) {
+		const { error } = await supabase.from('category_overrides').upsert({
+			user_id: userId,
+			slug: c.slug,
+			display_name: c.displayName ?? null,
+			schema: c.schema ?? null,
+			updated_at: c.updatedAt,
+			deleted_at: c.deletedAt ?? null
+		});
+		if (error) console.error('Push (category_overrides) fehlgeschlagen:', error.message);
+		else await db.categoryOverrides.update(c.slug, { dirty: 0 });
 	}
 }
 
@@ -122,6 +142,7 @@ async function pullPrayers(userId: string) {
 			bildBreite: r.bild_breite ?? undefined,
 			bildHoehe: r.bild_hoehe ?? undefined,
 			bildPosition: r.bild_position ?? 'auto',
+			overridesSlug: r.overrides_slug ?? undefined,
 			updatedAt: r.updated_at,
 			deletedAt: r.deleted_at ?? undefined,
 			dirty: 0
@@ -157,4 +178,34 @@ async function pullFavorites(userId: string) {
 	}
 	const newest = data.at(-1)?.updated_at;
 	if (newest) await db.syncMeta.put({ key: 'favorites', lastPulledAt: newest });
+}
+
+async function pullCategoryOverrides(userId: string) {
+	if (!supabase) return;
+	const meta = await db.syncMeta.get('categoryOverrides');
+	const since = meta?.lastPulledAt ?? EPOCH;
+	const { data, error } = await supabase
+		.from('category_overrides')
+		.select('*')
+		.eq('user_id', userId)
+		.gt('updated_at', since)
+		.order('updated_at', { ascending: true });
+	if (error) {
+		console.error('Pull fehlgeschlagen:', error.message);
+		return;
+	}
+	if (!data?.length) return;
+
+	for (const r of data) {
+		await db.categoryOverrides.put({
+			slug: r.slug,
+			displayName: r.display_name ?? undefined,
+			schema: r.schema ?? undefined,
+			updatedAt: r.updated_at,
+			deletedAt: r.deleted_at ?? undefined,
+			dirty: 0
+		});
+	}
+	const newest = data.at(-1)?.updated_at;
+	if (newest) await db.syncMeta.put({ key: 'categoryOverrides', lastPulledAt: newest });
 }

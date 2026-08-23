@@ -68,7 +68,12 @@ class AuthState {
 			}
 
 			if (previousUserId && previousUserId !== data.session.user.id) {
-				await Promise.all([db.prayers.clear(), db.favorites.clear(), db.syncMeta.clear()]);
+				await Promise.all([
+					db.prayers.clear(),
+					db.favorites.clear(),
+					db.categoryOverrides.clear(),
+					db.syncMeta.clear()
+				]);
 			}
 
 			this.session = data.session;

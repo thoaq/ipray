@@ -21,6 +21,9 @@ export interface LocalPrayer {
 	bildBreite?: number;
 	bildHoehe?: number;
 	bildPosition?: BildPosition;
+	/** Gesetzt, wenn dies die eigene, bearbeitete Fassung eines mitgelieferten Gebets ist —
+	 *  der Wert ist der Slug des Originals, das dadurch für diese Person ersetzt wird. */
+	overridesSlug?: string;
 	updatedAt: string;
 	deletedAt?: string;
 	dirty: 0 | 1;
@@ -38,10 +41,22 @@ export interface SyncMeta {
 	lastPulledAt: string;
 }
 
+/** Persönliche Anpassung einer Kategorie (Name/Farbschema) — überschreibt nur die
+ *  Anzeige für den gegebenen Slug, rührt nicht an den Gebeten selbst. */
+export interface LocalCategoryOverride {
+	slug: string;
+	displayName?: string;
+	schema?: string;
+	updatedAt: string;
+	deletedAt?: string;
+	dirty: 0 | 1;
+}
+
 class GebetsraumDB extends Dexie {
 	prayers!: Table<LocalPrayer, string>;
 	favorites!: Table<LocalFavorite, string>;
 	syncMeta!: Table<SyncMeta, string>;
+	categoryOverrides!: Table<LocalCategoryOverride, string>;
 
 	constructor() {
 		super('gebetsraum');
@@ -49,6 +64,12 @@ class GebetsraumDB extends Dexie {
 			prayers: 'id, userId, updatedAt, dirty',
 			favorites: 'itemId, updatedAt, dirty',
 			syncMeta: 'key'
+		});
+		this.version(2).stores({
+			prayers: 'id, userId, updatedAt, dirty',
+			favorites: 'itemId, updatedAt, dirty',
+			syncMeta: 'key',
+			categoryOverrides: 'slug, updatedAt, dirty'
 		});
 	}
 }

@@ -1,15 +1,38 @@
 <script lang="ts">
 	import { favorites } from '$lib/favorites.svelte';
 	import { personalPrayers } from '$lib/personalPrayers.svelte';
+	import { categoryOverrides } from '$lib/categoryOverrides.svelte';
+	import { configFor } from '$lib/content/categories';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 
+	// Für ein favorisiertes, mitgeliefertes Gebet zeigt die eigene Fassung (falls vorhanden)
+	// ihren aktuellen Titel/Kategorie statt der beim Fork eingefrorenen Original-Daten.
+	const overrideBySlug = $derived(
+		new Map(personalPrayers.items.filter((p) => p.overridesSlug).map((p) => [p.overridesSlug!, p]))
+	);
+
+	function displayKategorie(kategorie: string, kategorieSlug: string) {
+		return categoryOverrides.resolve(kategorieSlug, kategorie, 'standard').name;
+	}
+
 	const items = $derived([
-		...data.prayers.filter((p) => favorites.has(p.slug)).map((p) => ({ id: p.slug, titel: p.titel, kategorie: p.kategorie })),
+		...data.prayers
+			.filter((p) => favorites.has(p.slug))
+			.map((p) => {
+				const ov = overrideBySlug.get(p.slug);
+				const kategorie = ov ? ov.kategorie : p.kategorie;
+				const kategorieSlug = ov ? configFor(ov.kategorie).slug : p.kategorieSlug;
+				return {
+					id: p.slug,
+					titel: ov ? ov.titel : p.titel,
+					kategorie: displayKategorie(kategorie, kategorieSlug)
+				};
+			}),
 		...personalPrayers.items
-			.filter((p) => favorites.has(p.id))
-			.map((p) => ({ id: p.id, titel: p.titel, kategorie: p.kategorie }))
+			.filter((p) => !p.overridesSlug && favorites.has(p.id))
+			.map((p) => ({ id: p.id, titel: p.titel, kategorie: displayKategorie(p.kategorie, configFor(p.kategorie).slug) }))
 	]);
 </script>
 

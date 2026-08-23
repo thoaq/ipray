@@ -1,72 +1,52 @@
 <script lang="ts">
-	import { schemeFor, schemeCssVars } from '$lib/content/schemes';
-	import { configFor } from '$lib/content/categories';
-	import { styleFromVars } from '$lib/styles/cssVars';
-	import { theme } from '$lib/theme.svelte';
 	import { favorites } from '$lib/favorites.svelte';
 	import { personalPrayers } from '$lib/personalPrayers.svelte';
 	import { categoryOverrides } from '$lib/categoryOverrides.svelte';
+	import { configFor } from '$lib/content/categories';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 
-	const ownItems = $derived(personalPrayers.items.filter((p) => configFor(p.kategorie).slug === data.slug));
+	const ownItems = $derived(personalPrayers.items.filter((p) => p.tags.includes(data.tag)));
 
-	// Mitgelieferte Gebete, für die eine eigene Fassung existiert, tauchen nur noch über
-	// diese Fassung auf — sonst stünde dasselbe Gebet doppelt in der Liste.
+	// Mitgelieferte Gebete mit eigener Fassung tauchen nur über diese auf (kein Duplikat).
 	const overriddenSlugs = $derived(
 		new Set(personalPrayers.items.filter((p) => p.overridesSlug).map((p) => p.overridesSlug))
 	);
 	const curatedItems = $derived(data.items.filter((p) => !overriddenSlugs.has(p.slug)));
 
-	const categoryInfo = $derived.by(() => {
-		const base = data.category ?? (() => {
-			const first = ownItems[0];
-			if (!first) return null;
-			const cfg = configFor(first.kategorie);
-			return { name: first.kategorie, slug: cfg.slug, schema: cfg.schema, count: ownItems.length };
-		})();
-		if (!base) return null;
-		return { ...base, ...categoryOverrides.resolve(base.slug, base.name, base.schema) };
-	});
+	function displayKategorie(kategorie: string, kategorieSlug: string) {
+		return categoryOverrides.resolve(kategorieSlug, kategorie, 'standard').name;
+	}
 
 	const allItems = $derived([
 		...curatedItems.map((p) => ({
 			id: p.slug,
 			titel: p.titel,
-			unterkategorie: p.unterkategorie,
-			tags: p.tags,
+			kategorie: displayKategorie(p.kategorie, p.kategorieSlug),
 			imageSrc: p.image?.src
 		})),
 		...ownItems.map((p) => ({
 			id: p.overridesSlug ?? p.id,
 			titel: p.titel,
-			unterkategorie: p.unterkategorie,
-			tags: p.tags,
+			kategorie: displayKategorie(p.kategorie, configFor(p.kategorie).slug),
 			imageSrc: p.bildUrl
 		}))
 	]);
-
-	const scheme = $derived(schemeFor(categoryInfo?.schema));
-	const varsStyle = $derived(styleFromVars(schemeCssVars(scheme, theme.isDark)));
 </script>
 
 <svelte:head>
-	<title>{categoryInfo ? `${categoryInfo.name} · Gebetsraum` : 'Gebetsraum'}</title>
+	<title>#{data.tag} · Gebetsraum</title>
 </svelte:head>
 
-<div class="page" style={varsStyle}>
+<div class="page">
 	<a class="back" href="/">← Alle Kategorien</a>
+	<header class="hero">
+		<span class="eyebrow">{allItems.length} {allItems.length === 1 ? 'Gebet' : 'Gebete'}</span>
+		<h1>#{data.tag}</h1>
+	</header>
 
-	{#if categoryInfo}
-		<header class="hero">
-			<span class="eyebrow">{allItems.length} {allItems.length === 1 ? 'Gebet' : 'Gebete'}</span>
-			<div class="hero-row">
-				<h1>{categoryInfo.name}</h1>
-				<a class="edit-link" href="/kategorie/{data.slug}/bearbeiten">✏️ Bearbeiten</a>
-			</div>
-		</header>
-
+	{#if allItems.length}
 		<ul class="cards">
 			{#each allItems as p (p.id)}
 				<li>
@@ -76,10 +56,7 @@
 						{/if}
 						<span class="body">
 							<span class="title">{p.titel}</span>
-							<span class="meta">
-								{p.unterkategorie ?? categoryInfo.name}{#if p.tags.length}
-									· {p.tags.join(', ')}{/if}
-							</span>
+							<span class="meta">{p.kategorie}</span>
 						</span>
 						<button
 							type="button"
@@ -97,8 +74,8 @@
 				</li>
 			{/each}
 		</ul>
-	{:else if personalPrayers.loaded}
-		<p class="notice">Diese Kategorie wurde nicht gefunden.</p>
+	{:else}
+		<p class="notice">Keine Gebete mit diesem Tag gefunden.</p>
 	{/if}
 </div>
 
@@ -134,24 +111,13 @@
 		margin-bottom: 0.5rem;
 	}
 
-	.hero-row {
-		display: flex;
-		align-items: baseline;
-		flex-wrap: wrap;
-		gap: 0.7rem;
-	}
-
 	.hero h1 {
 		font-size: clamp(1.8rem, 5vw, 2.3rem);
 	}
 
-	.edit-link {
-		font-size: 0.82rem;
-		color: var(--ink-faint);
-		text-decoration: none;
-	}
-	.edit-link:hover {
-		color: var(--ink);
+	.notice {
+		color: var(--ink-soft);
+		font-size: 0.95rem;
 	}
 
 	.cards {
@@ -208,11 +174,6 @@
 	.meta {
 		font-size: 0.8rem;
 		color: var(--ink-faint);
-	}
-
-	.notice {
-		color: var(--ink-soft);
-		font-size: 0.95rem;
 	}
 
 	.fav {

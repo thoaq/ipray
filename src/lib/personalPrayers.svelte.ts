@@ -3,7 +3,25 @@ import { db, type LocalPrayer } from './db';
 import { requestSync } from './sync';
 import { auth } from './auth.svelte';
 import { uploadPrayerImage } from './imageUpload';
-import type { BildPosition } from './content/types';
+import type { BildPosition, BildRolle } from './content/types';
+
+export interface PrayerFormInput {
+	titel: string;
+	kategorie: string;
+	unterkategorie?: string;
+	tags: string[];
+	quelle?: string;
+	bodyText: string;
+	imageFile?: File;
+	bildPosition?: BildPosition;
+	/** Entfernt ein vorhandenes Bild, wenn keine neue Datei gewählt wurde (nur beim Bearbeiten relevant). */
+	removeImage?: boolean;
+	/** Übernimmt ein bereits vorhandenes Bild unverändert (z.B. das Bild eines mitgelieferten
+	 *  Gebets beim Anlegen einer eigenen Fassung) — spart einen unnötigen Re-Upload. */
+	existingImage?: { url: string; rolle: BildRolle; breite: number; hoehe: number };
+	/** Slug des mitgelieferten Gebets, das diese eigene Fassung für die Person ersetzt. */
+	overridesSlug?: string;
+}
 
 class PersonalPrayersState {
 	items: LocalPrayer[] = $state([]);
@@ -24,16 +42,12 @@ class PersonalPrayersState {
 		return this.items.find((p) => p.id === id);
 	}
 
-	async add(input: {
-		titel: string;
-		kategorie: string;
-		unterkategorie?: string;
-		tags: string[];
-		quelle?: string;
-		bodyText: string;
-		imageFile?: File;
-		bildPosition?: BildPosition;
-	}): Promise<string> {
+	/** Die eigene Fassung eines mitgelieferten Gebets, falls für diesen Slug bereits eine existiert. */
+	byOverriddenSlug(slug: string): LocalPrayer | undefined {
+		return this.items.find((p) => p.overridesSlug === slug);
+	}
+
+	async add(input: PrayerFormInput): Promise<string> {
 		// Ohne verbundenes Supabase-Projekt bleibt alles rein lokal auf diesem Gerät;
 		// 'local' wird beim späteren Verbinden durch die echte Nutzer-ID ersetzt (siehe sync.ts).
 		const userId = auth.userId ?? 'local';
@@ -42,8 +56,12 @@ class PersonalPrayersState {
 
 		// Bild-Upload braucht ein verbundenes, angemeldetes Konto (Storage-Policies greifen
 		// pro Nutzer-ID) — ohne das wird das Gebet trotzdem gespeichert, nur ohne Bild.
+		// existingImage übernimmt z.B. das Bild eines mitgelieferten Gebets unverändert,
+		// ohne es erneut hochzuladen.
 		const image =
-			input.imageFile && auth.userId ? await uploadPrayerImage(auth.userId, id, input.imageFile) : undefined;
+			input.imageFile && auth.userId
+				? await uploadPrayerImage(auth.userId, id, input.imageFile)
+				: input.existingImage;
 
 		await db.prayers.put({
 			id,
@@ -60,11 +78,44 @@ class PersonalPrayersState {
 			bildBreite: image?.breite,
 			bildHoehe: image?.hoehe,
 			bildPosition: image ? (input.bildPosition ?? 'auto') : undefined,
+			overridesSlug: input.overridesSlug,
 			updatedAt: now,
 			dirty: 1
 		});
 		requestSync();
 		return id;
+	}
+
+	async update(id: string, input: PrayerFormInput): Promise<void> {
+		const existing = await db.prayers.get(id);
+		if (!existing) throw new Error('Gebet nicht gefunden.');
+		const now = new Date().toISOString();
+
+		const image =
+			input.imageFile && auth.userId ? await uploadPrayerImage(auth.userId, id, input.imageFile) : undefined;
+		const keepExistingImage = !input.imageFile && !input.removeImage;
+
+		await db.prayers.put({
+			...existing,
+			titel: input.titel,
+			kategorie: input.kategorie,
+			unterkategorie: input.unterkategorie || undefined,
+			tags: input.tags,
+			quelle: input.quelle || undefined,
+			bodyText: input.bodyText,
+			bildUrl: keepExistingImage ? existing.bildUrl : image?.url,
+			bildRolle: keepExistingImage ? existing.bildRolle : image?.rolle,
+			bildBreite: keepExistingImage ? existing.bildBreite : image?.breite,
+			bildHoehe: keepExistingImage ? existing.bildHoehe : image?.hoehe,
+			bildPosition: keepExistingImage
+				? existing.bildPosition
+				: image
+					? (input.bildPosition ?? 'auto')
+					: undefined,
+			updatedAt: now,
+			dirty: 1
+		});
+		requestSync();
 	}
 
 	async remove(id: string) {

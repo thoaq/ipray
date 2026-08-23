@@ -12,12 +12,16 @@
 			fields: ['titel', 'bodyText', 'tagsText', 'kategorie'],
 			storeFields: ['titel', 'kategorie', 'kategorieSlug', 'slug', 'tags']
 		});
-		const curated = data.prayers.map((p) => ({ id: p.slug, ...p, tagsText: p.tags.join(' ') }));
+		const overriddenSlugs = new Set(personalPrayers.items.filter((p) => p.overridesSlug).map((p) => p.overridesSlug));
+		const curated = data.prayers
+			.filter((p) => !overriddenSlugs.has(p.slug))
+			.map((p) => ({ id: p.slug, ...p, tagsText: p.tags.join(' ') }));
 		const own = personalPrayers.items.map((p) => {
 			const cfg = configFor(p.kategorie);
+			const id = p.overridesSlug ?? p.id;
 			return {
-				id: p.id,
-				slug: p.id,
+				id,
+				slug: id,
 				titel: p.titel,
 				kategorie: p.kategorie,
 				kategorieSlug: cfg.slug,

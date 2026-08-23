@@ -1,6 +1,11 @@
-# sv
+# Gebetsraum
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+Eine persönliche Gebets-PWA — siehe [KONZEPT.md](KONZEPT.md) für Architektur, Datenmodell
+und Design. Live unter https://ipray365.netlify.app
+
+---
+
+Gerüst erstellt mit [`sv`](https://github.com/sveltejs/cli).
 
 ## Creating a project
 

@@ -7,18 +7,35 @@
 	import { theme } from '$lib/theme.svelte';
 	import { favorites } from '$lib/favorites.svelte';
 	import { personalPrayers } from '$lib/personalPrayers.svelte';
+	import { categoryOverrides } from '$lib/categoryOverrides.svelte';
+	import type { LocalPrayer } from '$lib/db';
+	import type { PrayerImage } from '$lib/content/types';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 
-	// Kuratierte Gebete kommen aus data.prayer (server-geladen); eigene Gebete liegen
-	// nur clientseitig in Dexie und werden hier reaktiv nachgeschlagen (siehe +page.ts).
+	// Kuratierte Gebete kommen aus data.prayer (server-geladen). Eigene Gebete und eigene
+	// Fassungen mitgelieferter Gebete (Fork beim Bearbeiten) liegen nur clientseitig in
+	// Dexie und werden hier reaktiv nachgeschlagen (siehe +page.ts).
+	const override = $derived(data.prayer ? personalPrayers.byOverriddenSlug(data.slug) : undefined);
 	const personal = $derived(data.prayer ? undefined : personalPrayers.byId(data.slug));
 
-	const view = $derived.by(() => {
-		if (data.prayer) {
+	function imageFrom(p: LocalPrayer): PrayerImage | undefined {
+		if (!p.bildUrl || !p.bildRolle || !p.bildBreite || !p.bildHoehe) return undefined;
+		return {
+			src: p.bildUrl,
+			rolle: p.bildRolle,
+			position: p.bildPosition ?? 'auto',
+			breite: p.bildBreite,
+			hoehe: p.bildHoehe
+		};
+	}
+
+	const rawView = $derived.by(() => {
+		if (data.prayer && !override) {
 			return {
 				id: data.prayer.slug,
+				recordId: undefined as string | undefined,
 				titel: data.prayer.titel,
 				kategorie: data.prayer.kategorie,
 				kategorieSlug: data.prayer.kategorieSlug,
@@ -28,13 +45,33 @@
 				schema: data.prayer.schema,
 				bodyHtml: data.prayer.bodyHtml,
 				image: data.prayer.image,
-				own: false
+				own: false,
+				isOverride: false
+			};
+		}
+		if (override) {
+			const cfg = configFor(override.kategorie);
+			return {
+				id: data.slug,
+				recordId: override.id,
+				titel: override.titel,
+				kategorie: override.kategorie,
+				kategorieSlug: cfg.slug,
+				unterkategorie: override.unterkategorie,
+				tags: override.tags,
+				quelle: override.quelle,
+				schema: cfg.schema,
+				bodyHtml: marked.parse(override.bodyText) as string,
+				image: imageFrom(override),
+				own: true,
+				isOverride: true
 			};
 		}
 		if (personal) {
 			const cfg = configFor(personal.kategorie);
 			return {
 				id: personal.id,
+				recordId: personal.id,
 				titel: personal.titel,
 				kategorie: personal.kategorie,
 				kategorieSlug: cfg.slug,
@@ -43,20 +80,19 @@
 				quelle: personal.quelle,
 				schema: cfg.schema,
 				bodyHtml: marked.parse(personal.bodyText) as string,
-				image:
-					personal.bildUrl && personal.bildRolle && personal.bildBreite && personal.bildHoehe
-						? {
-								src: personal.bildUrl,
-								rolle: personal.bildRolle,
-								position: personal.bildPosition ?? 'auto',
-								breite: personal.bildBreite,
-								hoehe: personal.bildHoehe
-							}
-						: undefined,
-				own: true
+				image: imageFrom(personal),
+				own: true,
+				isOverride: false
 			};
 		}
 		return null;
+	});
+
+	// Persönliche Kategorie-Anpassung (Name/Farbschema) auf das Gebet anwenden.
+	const view = $derived.by(() => {
+		if (!rawView) return null;
+		const resolved = categoryOverrides.resolve(rawView.kategorieSlug, rawView.kategorie, rawView.schema);
+		return { ...rawView, kategorie: resolved.name, schema: resolved.schema };
 	});
 
 	const scheme = $derived(schemeFor(view?.schema));
@@ -85,10 +121,20 @@
 	}
 
 	async function removeOwn() {
-		if (!view || !confirm(`„${view.titel}" wirklich löschen?`)) return;
+		if (!view || !view.recordId) return;
+		const confirmMsg = view.isOverride
+			? `Eigene Fassung von „${view.titel}" verwerfen und zum Original zurückkehren?`
+			: `„${view.titel}" wirklich löschen?`;
+		if (!confirm(confirmMsg)) return;
 		deleting = true;
-		await personalPrayers.remove(view.id);
-		await goto('/');
+		await personalPrayers.remove(view.recordId);
+		if (view.isOverride) {
+			// Sobald die eigene Fassung als gelöscht markiert ist, zeigt view reaktiv
+			// wieder das mitgelieferte Original — keine Navigation nötig.
+			deleting = false;
+		} else {
+			await goto('/');
+		}
 	}
 </script>
 
@@ -108,7 +154,8 @@
 			{/if}
 			<div class="text">
 				<span class="eyebrow"
-					>{view.kategorie}{#if view.unterkategorie} · {view.unterkategorie}{/if}{#if view.own} · Eigenes Gebet{/if}</span
+					>{view.kategorie}{#if view.unterkategorie} · {view.unterkategorie}{/if}{#if view.isOverride} · Eigene
+						Fassung{:else if view.own} · Eigenes Gebet{/if}</span
 				>
 				<h1>{view.titel}</h1>
 
@@ -117,7 +164,7 @@
 				<footer>
 					<div class="tags">
 						{#each view.tags as tag (tag)}
-							<span class="tag">{tag}</span>
+							<a class="tag" href="/tag/{encodeURIComponent(tag)}">{tag}</a>
 						{/each}
 					</div>
 					{#if view.quelle}
@@ -136,9 +183,10 @@
 							{shareState === 'copied' ? 'Link kopiert' : '⤴ Teilen'}
 						</button>
 						<button type="button" class="action" onclick={() => window.print()}>⎙ Drucken / PDF</button>
+						<a class="action" href="/gebet/{data.slug}/bearbeiten">✏️ Bearbeiten</a>
 						{#if view.own}
 							<button type="button" class="action danger" onclick={removeOwn} disabled={deleting}>
-								🗑 Löschen
+								{view.isOverride ? '↺ Eigene Fassung verwerfen' : '🗑 Löschen'}
 							</button>
 						{/if}
 					</div>
@@ -262,6 +310,11 @@
 		border: 1px solid var(--accent-line);
 		border-radius: 999px;
 		padding: 0.2rem 0.65rem;
+		text-decoration: none;
+	}
+	.tag:hover {
+		background: var(--accent-wash);
+		border-color: var(--accent);
 	}
 
 	.source {
@@ -284,6 +337,8 @@
 		padding: 0.45rem 0.9rem;
 		color: var(--ink-soft);
 		cursor: pointer;
+		text-decoration: none;
+		display: inline-block;
 	}
 	.action:hover {
 		color: var(--ink);
