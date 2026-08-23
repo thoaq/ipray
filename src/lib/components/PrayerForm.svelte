@@ -340,11 +340,16 @@
 							<option value="unten">Immer unter dem Text</option>
 						</select>
 					</label>
+				{:else if imageRole === 'bannerHoch'}
+					<label class="position-label">
+						Position
+						<select bind:value={bildPosition}>
+							<option value="auto">Automatisch (ab ausreichender Breite neben dem Text, sonst oben)</option>
+							<option value="neben">Immer neben dem Text (wird auf schmalen Bildschirmen schmaler statt oben zu stehen)</option>
+						</select>
+					</label>
 				{:else if imageRole}
-					<p class="hint">
-						Erkannt als {imageRole === 'bannerBreit' ? 'breites Banner' : 'schmales Banner'} — Position ergibt
-						sich automatisch aus dem Seitenverhältnis.
-					</p>
+					<p class="hint">Erkannt als breites Banner — Position ergibt sich automatisch aus dem Seitenverhältnis.</p>
 				{/if}
 				<button type="button" class="link-button" onclick={clearImage}>Bild entfernen</button>
 			</div>

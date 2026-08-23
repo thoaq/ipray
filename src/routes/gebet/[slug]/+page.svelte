@@ -359,18 +359,34 @@
 		font-size: 0.95rem;
 	}
 
-	/* Banner hoch: ab genug Breite als schmale Spalte neben dem Text */
+	/* Banner hoch, automatisch: ab genug Breite als schmale Spalte neben dem Text,
+	   darunter als kurz beschnittene Kopfzeile (schont das Bildmotiv bei Fotos). */
 	@container gebet (min-width: 800px) {
-		.role-bannerHoch.detail {
+		.role-bannerHoch.pos-auto.detail {
 			flex-direction: row;
 			align-items: stretch;
 		}
-		.role-bannerHoch .figure {
+		.role-bannerHoch.pos-auto .figure {
 			width: 150px;
 			flex-shrink: 0;
 			aspect-ratio: auto !important;
 			max-height: none;
 		}
+	}
+
+	/* Banner hoch „neben": erzwungen, unabhängig von der Breite — die Spalte wird auf
+	   schmalen Bildschirmen schmaler statt auf eine beschnittene Kopfzeile umzuschalten.
+	   Bei einem Foto mit erkennbarem Motiv meist ungünstig, bei einem abstrakten
+	   Mosaik-Banner unproblematisch — daher eine bewusste Wahl, kein neuer Standard. */
+	.role-bannerHoch.pos-neben.detail {
+		flex-direction: row;
+		align-items: stretch;
+	}
+	.role-bannerHoch.pos-neben .figure {
+		width: clamp(56px, 26cqi, 150px);
+		flex-shrink: 0;
+		aspect-ratio: auto !important;
+		max-height: none;
 	}
 
 	/* Bild: ab genug Breite automatisch neben dem Text (nur im Default „auto") */
