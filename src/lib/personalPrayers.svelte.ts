@@ -105,6 +105,10 @@ class PersonalPrayersState {
 					: input.bannerImage;
 		const keepExistingImage =
 			!input.imageFile && !input.existingImagePath && !input.bannerImage && !input.removeImage;
+		// Rolle unabhängig ermitteln, damit die Position auch dann aus dem Formular übernommen
+		// wird, wenn nur die Position geändert wurde, ohne das Bild selbst neu zu wählen —
+		// sonst würde eine reine Positionsänderung stillschweigend verworfen.
+		const finalRolle = keepExistingImage ? existing.bildRolle : image?.rolle;
 
 		await db.prayers.put({
 			...existing,
@@ -115,14 +119,10 @@ class PersonalPrayersState {
 			quelle: input.quelle || undefined,
 			bodyText: input.bodyText,
 			bildUrl: keepExistingImage ? existing.bildUrl : image?.url,
-			bildRolle: keepExistingImage ? existing.bildRolle : image?.rolle,
+			bildRolle: finalRolle,
 			bildBreite: keepExistingImage ? existing.bildBreite : image?.breite,
 			bildHoehe: keepExistingImage ? existing.bildHoehe : image?.hoehe,
-			bildPosition: keepExistingImage
-				? existing.bildPosition
-				: image
-					? (input.bildPosition ?? 'auto')
-					: undefined,
+			bildPosition: finalRolle ? (input.bildPosition ?? 'auto') : undefined,
 			updatedAt: now,
 			dirty: 1
 		});
