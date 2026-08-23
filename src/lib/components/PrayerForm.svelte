@@ -4,6 +4,7 @@
 	import { auth } from '$lib/auth.svelte';
 	import { supabaseConfigured } from '$lib/supabaseClient';
 	import { classifyImageRole } from '$lib/content/imageRole';
+	import { listUserImages, type ExistingImageEntry } from '$lib/imageUpload';
 	import type { LocalPrayer } from '$lib/db';
 	import type { BildPosition, BildRolle } from '$lib/content/types';
 
@@ -46,6 +47,12 @@
 	let imageRole = $state<BildRolle | ''>(start?.bildRolle ?? '');
 	let bildPosition = $state<BildPosition>(start?.bildPosition ?? 'auto');
 	let removeImage = $state(false);
+	let selectedExistingPath = $state<string | undefined>(undefined);
+
+	let galleryOpen = $state(false);
+	let galleryLoading = $state(false);
+	let galleryError = $state('');
+	let galleryImages = $state<ExistingImageEntry[]>([]);
 
 	// Die eigene Kategorie mit aufnehmen, falls sie (noch) nicht in der kuratierten
 	// Liste steht — sonst würde das Bearbeiten sie sonst stillschweigend zurücksetzen.
@@ -60,6 +67,7 @@
 	function onImageChange(e: Event) {
 		const file = (e.target as HTMLInputElement).files?.[0];
 		imageFile = file;
+		selectedExistingPath = undefined;
 		removeImage = false;
 		if (!file) {
 			imagePreview = start?.bildUrl ?? '';
@@ -78,9 +86,41 @@
 
 	function clearImage() {
 		imageFile = undefined;
+		selectedExistingPath = undefined;
 		imagePreview = '';
 		imageRole = '';
 		removeImage = true;
+		galleryOpen = false;
+	}
+
+	async function toggleGallery() {
+		galleryOpen = !galleryOpen;
+		if (galleryOpen && galleryImages.length === 0 && !galleryLoading && auth.userId) {
+			galleryLoading = true;
+			galleryError = '';
+			try {
+				galleryImages = await listUserImages(auth.userId);
+			} catch (err) {
+				galleryError = err instanceof Error ? err.message : 'Bilder konnten nicht geladen werden.';
+			} finally {
+				galleryLoading = false;
+			}
+		}
+	}
+
+	function selectExistingImage(entry: ExistingImageEntry) {
+		imageFile = undefined;
+		selectedExistingPath = entry.path;
+		removeImage = false;
+		imagePreview = entry.url;
+		imageRole = '';
+		bildPosition = 'auto';
+		const img = new Image();
+		img.onload = () => {
+			imageRole = classifyImageRole(img.naturalWidth, img.naturalHeight);
+		};
+		img.src = entry.url;
+		galleryOpen = false;
 	}
 
 	async function submit(e: SubmitEvent) {
@@ -96,7 +136,13 @@
 			// Bild unverändert übernehmen (z.B. vom mitgelieferten Original beim Anlegen einer
 			// eigenen Fassung), wenn weder eine neue Datei gewählt noch "Entfernen" geklickt wurde.
 			const existingImage =
-				!imageFile && !removeImage && start?.bildUrl && start?.bildRolle && start?.bildBreite && start?.bildHoehe
+				!imageFile &&
+				!selectedExistingPath &&
+				!removeImage &&
+				start?.bildUrl &&
+				start?.bildRolle &&
+				start?.bildBreite &&
+				start?.bildHoehe
 					? { url: start.bildUrl, rolle: start.bildRolle, breite: start.bildBreite, hoehe: start.bildHoehe }
 					: undefined;
 
@@ -111,6 +157,7 @@
 				quelle: quelle.trim(),
 				bodyText: bodyText.trim(),
 				imageFile,
+				existingImagePath: selectedExistingPath,
 				bildPosition,
 				removeImage,
 				existingImage,
@@ -184,6 +231,37 @@
 		<input type="file" accept="image/*" disabled={!imageUploadAvailable} onchange={onImageChange} />
 	</label>
 
+	{#if imageUploadAvailable}
+		<button type="button" class="link-button" onclick={toggleGallery}>
+			{galleryOpen ? 'Galerie schließen' : 'Vorhandenes Bild wählen…'}
+		</button>
+	{/if}
+
+	{#if galleryOpen}
+		<div class="gallery">
+			{#if galleryLoading}
+				<p class="hint">Lädt…</p>
+			{:else if galleryError}
+				<p class="error">{galleryError}</p>
+			{:else if galleryImages.length === 0}
+				<p class="hint">Noch keine eigenen Bilder hochgeladen.</p>
+			{:else}
+				<div class="gallery-grid">
+					{#each galleryImages as entry (entry.path)}
+						<button
+							type="button"
+							class="gallery-item"
+							class:selected={selectedExistingPath === entry.path}
+							onclick={() => selectExistingImage(entry)}
+						>
+							<img src={entry.url} alt="" loading="lazy" />
+						</button>
+					{/each}
+				</div>
+			{/if}
+		</div>
+	{/if}
+
 	{#if !imageUploadAvailable}
 		<p class="hint">Bilder benötigen ein verbundenes Supabase-Projekt (siehe „Konto").</p>
 	{:else if imagePreview}
@@ -246,6 +324,35 @@
 		margin: 0;
 		font-size: 0.82rem;
 		color: var(--ink-faint);
+	}
+	.gallery {
+		margin-top: -0.6rem;
+	}
+	.gallery-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+		gap: 0.5rem;
+		max-height: 260px;
+		overflow-y: auto;
+		padding: 0.25rem;
+	}
+	.gallery-item {
+		padding: 0;
+		border: 2px solid transparent;
+		border-radius: 8px;
+		background: none;
+		cursor: pointer;
+		overflow: hidden;
+		aspect-ratio: 1;
+	}
+	.gallery-item img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+	}
+	.gallery-item.selected {
+		border-color: var(--accent);
 	}
 	.preview {
 		display: flex;

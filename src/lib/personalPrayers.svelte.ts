@@ -2,7 +2,7 @@ import { liveQuery } from 'dexie';
 import { db, type LocalPrayer } from './db';
 import { requestSync } from './sync';
 import { auth } from './auth.svelte';
-import { uploadPrayerImage } from './imageUpload';
+import { uploadPrayerImage, copyExistingPrayerImage } from './imageUpload';
 import type { BildPosition, BildRolle } from './content/types';
 
 export interface PrayerFormInput {
@@ -13,6 +13,8 @@ export interface PrayerFormInput {
 	quelle?: string;
 	bodyText: string;
 	imageFile?: File;
+	/** Pfad eines bereits hochgeladenen eigenen Bildes, das für dieses Gebet übernommen (kopiert) werden soll. */
+	existingImagePath?: string;
 	bildPosition?: BildPosition;
 	/** Entfernt ein vorhandenes Bild, wenn keine neue Datei gewählt wurde (nur beim Bearbeiten relevant). */
 	removeImage?: boolean;
@@ -61,7 +63,9 @@ class PersonalPrayersState {
 		const image =
 			input.imageFile && auth.userId
 				? await uploadPrayerImage(auth.userId, id, input.imageFile)
-				: input.existingImage;
+				: input.existingImagePath && auth.userId
+					? await copyExistingPrayerImage(auth.userId, id, input.existingImagePath)
+					: input.existingImage;
 
 		await db.prayers.put({
 			id,
@@ -92,8 +96,12 @@ class PersonalPrayersState {
 		const now = new Date().toISOString();
 
 		const image =
-			input.imageFile && auth.userId ? await uploadPrayerImage(auth.userId, id, input.imageFile) : undefined;
-		const keepExistingImage = !input.imageFile && !input.removeImage;
+			input.imageFile && auth.userId
+				? await uploadPrayerImage(auth.userId, id, input.imageFile)
+				: input.existingImagePath && auth.userId
+					? await copyExistingPrayerImage(auth.userId, id, input.existingImagePath)
+					: undefined;
+		const keepExistingImage = !input.imageFile && !input.existingImagePath && !input.removeImage;
 
 		await db.prayers.put({
 			...existing,
