@@ -1,11 +1,19 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import PrayerForm from '$lib/components/PrayerForm.svelte';
+	import { personalPrayers } from '$lib/personalPrayers.svelte';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 
-	const kategorien = $derived(data.categories.map((c) => c.name));
+	// Kuratierte Kategorien (server-geladen) + selbst angelegte Kategorien aus eigenen
+	// Gebeten (clientseitig aus Dexie) zusammenführen — sonst fehlen eigene Kategorien
+	// beim Anlegen eines weiteren Gebets in der Auswahl.
+	const kategorien = $derived.by(() => {
+		const names = new Set(data.categories.map((c) => c.name));
+		for (const p of personalPrayers.items) names.add(p.kategorie);
+		return [...names];
+	});
 </script>
 
 <svelte:head>
