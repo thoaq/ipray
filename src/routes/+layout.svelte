@@ -6,8 +6,15 @@
 	import { requestSync } from '$lib/sync';
 	import Onboarding from '$lib/components/Onboarding.svelte';
 	import InstallHint from '$lib/components/InstallHint.svelte';
+	import { registerSW } from 'virtual:pwa-register';
 
 	let { children } = $props();
+
+	// SvelteKit hat keine index.html für die automatische Injektion durch
+	// vite-plugin-pwa — der Service Worker wird darum hier manuell registriert.
+	if (typeof window !== 'undefined') {
+		registerSW({ immediate: true });
+	}
 
 	$effect(() => {
 		if (theme.override) document.documentElement.dataset.theme = theme.override;

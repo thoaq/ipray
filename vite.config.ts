@@ -16,6 +16,7 @@ export default defineConfig({
 		}),
 		VitePWA({
 			registerType: 'autoUpdate',
+			injectRegister: false,
 			manifest: {
 				name: 'Gebetsraum',
 				short_name: 'Gebetsraum',
