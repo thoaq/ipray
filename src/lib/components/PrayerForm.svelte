@@ -4,6 +4,8 @@
 	import { auth } from '$lib/auth.svelte';
 	import { supabaseConfigured } from '$lib/supabaseClient';
 	import { classifyImageRole } from '$lib/content/imageRole';
+	import { categoryOverrides } from '$lib/categoryOverrides.svelte';
+	import { configFor } from '$lib/content/categories';
 	import { listUserImages, type ExistingImageEntry } from '$lib/imageUpload';
 	import type { LocalPrayer } from '$lib/db';
 	import type { BildPosition, BildRolle } from '$lib/content/types';
@@ -56,10 +58,14 @@
 
 	// Die eigene Kategorie mit aufnehmen, falls sie (noch) nicht in der kuratierten
 	// Liste steht — sonst würde das Bearbeiten sie sonst stillschweigend zurücksetzen.
+	// Gespeichert wird weiterhin der ursprüngliche Name (Wert), angezeigt wird die
+	// persönliche Umbenennung, falls vorhanden (Label) — wie überall sonst in der App.
 	const kategorien = $derived.by(() => {
 		const names = new Set(categories);
 		if (initial?.kategorie) names.add(initial.kategorie);
-		return [...names].sort((a, b) => a.localeCompare(b, 'de'));
+		return [...names]
+			.map((name) => ({ name, displayName: categoryOverrides.resolve(configFor(name).slug, name, 'standard').name }))
+			.sort((a, b) => a.displayName.localeCompare(b.displayName, 'de'));
 	});
 
 	const imageUploadAvailable = $derived(supabaseConfigured && auth.ready && !!auth.userId);
@@ -202,8 +208,8 @@
 		Kategorie
 		<select bind:value={kategorie} required>
 			<option value="" disabled selected={!start}>Bitte wählen…</option>
-			{#each kategorien as name (name)}
-				<option value={name}>{name}</option>
+			{#each kategorien as cat (cat.name)}
+				<option value={cat.name}>{cat.displayName}</option>
 			{/each}
 			<option value="__neu__">+ Neue Kategorie…</option>
 		</select>
