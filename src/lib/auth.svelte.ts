@@ -34,15 +34,21 @@ class AuthState {
 	userId = $derived(this.session?.user?.id ?? null);
 	signedIn = $derived(this.session !== null);
 
+	/** Ist an dieses Konto (auf diesem Gerät sichtbar) ein Google-Konto verknüpft? Steuert
+	 *  in der Konto-Ansicht, ob Code-basierte Gerätekopplung oder Google-Anmeldung als Weg
+	 *  fürs nächste Gerät angezeigt wird — siehe Offene Punkte in KONZEPT.md. */
+	googleLinked = $derived(
+		this.session?.user?.identities?.some((identity) => identity.provider === 'google') ?? false
+	);
+
 	constructor() {
 		if (typeof window === 'undefined' || !supabaseConfigured || !supabase) {
 			this.ready = true;
 			return;
 		}
 
-		supabase.auth.onAuthStateChange((_event, session) => {
-			this.session = session;
-			rememberAccountId(session?.user?.id);
+		supabase.auth.onAuthStateChange((event, session) => {
+			void this.handleAuthChange(event, session);
 		});
 
 		supabase.auth.getSession().then(({ data }) => {
@@ -54,6 +60,26 @@ class AuthState {
 				this.bootstrapAnonymous();
 			}
 		});
+	}
+
+	// Google-Anmeldung auf einem neuen Gerät (signInWithOAuth, andere user_id als die bisherige
+	// anonyme Identität dieses Geräts) muss wie restoreOnThisDevice() lokal aufräumen, sonst
+	// vermischen sich die Konten. Läuft nur bei event 'SIGNED_IN' — refreshSession() (Code-Flow)
+	// feuert 'TOKEN_REFRESHED' und behält seine eigene, explizite Aufräum-Logik unten; das
+	// Verknüpfen per linkIdentity() ändert die user_id nicht, löst darum hier nichts aus.
+	private async handleAuthChange(event: string, session: Session | null) {
+		const previousUserId = this.session?.user?.id ?? lastKnownAccountId();
+		if (event === 'SIGNED_IN' && previousUserId && session && session.user.id !== previousUserId) {
+			pauseSync();
+			try {
+				await Promise.all([db.prayers.clear(), db.favorites.clear(), db.categoryOverrides.clear()]);
+				await db.syncMeta.clear();
+			} finally {
+				resumeSync();
+			}
+		}
+		this.session = session;
+		rememberAccountId(session?.user?.id);
 	}
 
 	private async bootstrapAnonymous() {
@@ -115,6 +141,32 @@ class AuthState {
 		} finally {
 			resumeSync();
 		}
+	}
+
+	/** Verknüpft das aktuell auf diesem Gerät angemeldete (anonyme) Konto per OAuth mit Google
+	 *  (gleiche user_id, keine Datenmigration). Leitet den Browser zu Google weiter — die Seite
+	 *  wird danach mit dem gleichen Konto neu geladen, jetzt mit einer zweiten Identität. */
+	async linkGoogle(): Promise<{ ok: boolean; error?: string }> {
+		if (!supabase) return { ok: false, error: 'Supabase ist noch nicht konfiguriert.' };
+		const { error } = await supabase.auth.linkIdentity({
+			provider: 'google',
+			options: { redirectTo: `${window.location.origin}/konto` }
+		});
+		if (error) return { ok: false, error: error.message };
+		return { ok: true };
+	}
+
+	/** Meldet dieses Gerät per Google an — für ein bereits mit Google verknüpftes Konto ersetzt
+	 *  das die bisherige (leere) anonyme Sitzung dieses Geräts durch die verknüpfte Identität;
+	 *  das Aufräumen lokaler Reste übernimmt handleAuthChange() beim Rücksprung. */
+	async signInWithGoogle(): Promise<{ ok: boolean; error?: string }> {
+		if (!supabase) return { ok: false, error: 'Supabase ist noch nicht konfiguriert.' };
+		const { error } = await supabase.auth.signInWithOAuth({
+			provider: 'google',
+			options: { redirectTo: `${window.location.origin}/konto` }
+		});
+		if (error) return { ok: false, error: error.message };
+		return { ok: true };
 	}
 }
 

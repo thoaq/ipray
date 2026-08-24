@@ -217,17 +217,38 @@ einer). Kein Fehler beim Verbinden selbst, sondern die Sitzung hält auf Dauer n
 iOS, das Website-Daten unter Speicherdruck oder nach längerer Nichtnutzung verwirft. Das ist der
 eigentliche Kern des Mehrgeräte-Problems, nicht die Pull-Logik.
 
-**Geplanter Fix — optionale Google-Anmeldung.** Statt die Sitzungspersistenz selbst robuster zu
-machen, soll eine zuverlässigere Alternative zum rein anonymen Zugang dazukommen:
-Supabase-OAuth mit Google, über `supabase.auth.linkIdentity()` an das **bestehende** anonyme
-Konto verknüpft (gleiche `user_id`, keine Datenmigration nötig). Anonymer Zugang bleibt
+**Optionale Google-Anmeldung — Code fertig, Einrichtung in Supabase/Google Cloud noch offen.**
+Statt die Sitzungspersistenz selbst robuster zu machen, gibt es jetzt eine zuverlässigere
+Alternative zum rein anonymen Zugang: Supabase-OAuth mit Google, über
+`supabase.auth.linkIdentity()` an das **bestehende** anonyme Konto verknüpft (gleiche
+`user_id`, keine Datenmigration nötig, `src/lib/auth.svelte.ts`). Anonymer Zugang bleibt
 Standard beim ersten Öffnen des Einladungslinks (kein Bruch mit „sofort loslegen, kein
-Passwort"). Unter „Konto" kommt ein optionaler „Mit Google verknüpfen"-Schritt dazu — danach
-meldet man sich auf jedem weiteren Gerät einfach mit Google an, ohne rotierenden Code.
-Bestehende Funktionen bleiben für nicht verknüpfte Konten unverändert bestehen (Code ist dort
-weiterhin die einzige Absicherung); bei verknüpften Konten wird die Code-Anzeige durch einen
-Hinweis „Über Google gesichert" ersetzt und „Anderes Gerät verbinden" ausgeblendet, da nicht
-mehr nötig. Aufwand grob: ein guter halber bis ganzer Arbeitstag, keine RLS-Änderung nötig.
+Passwort"). Unter „Konto" gibt es einen „Mit Google verknüpfen"-Schritt — danach meldet man
+sich auf jedem weiteren Gerät per „Mit Google anmelden" (`supabase.auth.signInWithOAuth()`) an,
+ohne rotierenden Code; das Aufräumen lokaler Reste beim Kontowechsel übernimmt
+`AuthState.handleAuthChange()` automatisch, analog zu `restoreOnThisDevice()`. Bestehende
+Funktionen bleiben für nicht verknüpfte Konten unverändert bestehen (Code ist dort weiterhin
+die einzige Absicherung); bei verknüpften Konten wird die Code-Anzeige durch einen Hinweis
+„Über Google gesichert" ersetzt und „Anderes Gerät verbinden" ausgeblendet, da nicht mehr
+nötig. Keine RLS-Änderung nötig.
+
+Damit das funktioniert, fehlt noch eine einmalige, manuelle Einrichtung (kann Claude nicht
+selbst tun):
+1. In der [Google Cloud Console](https://console.cloud.google.com/apis/credentials) ein
+   OAuth-2.0-Client-ID vom Typ „Webanwendung" anlegen. Autorisierte Redirect-URI:
+   `https://niqtvoihoiicalmyxcwu.supabase.co/auth/v1/callback`.
+2. Im [Supabase-Dashboard](https://supabase.com/dashboard/project/niqtvoihoiicalmyxcwu/auth/providers)
+   unter Authentication → Providers → Google die Client-ID und das Client-Secret aus Schritt 1
+   eintragen und den Provider aktivieren.
+3. Ebenfalls im Supabase-Dashboard unter Authentication → Settings (User Signups) die Option
+   „Allow manual linking" aktivieren — ohne sie liefert `linkIdentity()` sonst zur Laufzeit
+   den Fehler „Manual linking is disabled" (per Browser-Test am 2026-08-24 bestätigt; das
+   Verknüpfen ist ohne diese Option grundsätzlich deaktiviert, nicht nur unkonfiguriert).
+4. Im Supabase-Dashboard unter Authentication → URL Configuration die Site-URL
+   (`https://ipray365.netlify.app`) und bei Redirect URLs zusätzlich
+   `https://ipray365.netlify.app/konto` (und für lokale Entwicklung `http://localhost:5173/konto`)
+   eintragen — sonst leitet Google zwar erfolgreich zu Supabase zurück, Supabase aber nicht
+   weiter zur App.
 
 **Separat, unabhängig vom Auth-Fix — `prayers`-Tabelle nicht pro Konto geschützt.** Anders als
 `favorites`/`category_overrides` (Primärschlüssel `(user_id, slug/item_id)`) hat `prayers` nur

@@ -24,6 +24,24 @@
 	let restoreState = $state<'idle' | 'working' | 'error' | 'done'>('idle');
 	let restoreError = $state('');
 	let restorePending = $state(false);
+	let linkState = $state<'idle' | 'working' | 'error'>('idle');
+	let linkError = $state('');
+	let googleSignInState = $state<'idle' | 'working' | 'error'>('idle');
+	let googleSignInError = $state('');
+
+	// Nach dem Rücksprung von Google kann Supabase einen Fehler statt eines Tokens in der URL
+	// anhängen (z. B. abgebrochen, oder das Google-Konto ist schon einem anderen Konto
+	// zugeordnet) — steht sonst nirgends sichtbar, da kein eigener Callback-Handler existiert.
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		const params = new URLSearchParams(window.location.hash.replace(/^#/, '') || window.location.search);
+		const description = params.get('error_description') ?? params.get('error');
+		if (description) {
+			linkError = decodeURIComponent(description.replace(/\+/g, ' '));
+			linkState = 'error';
+			history.replaceState(null, '', window.location.pathname);
+		}
+	});
 
 	const localPrayerCount = $derived(personalPrayers.items.length);
 	const localUnsyncedPrayerCount = $derived(personalPrayers.items.filter((p) => p.dirty === 1).length);
@@ -98,6 +116,28 @@
 			restoreError = result.error ?? 'Unbekannter Fehler';
 		}
 	}
+
+	async function linkGoogle() {
+		linkState = 'working';
+		linkError = '';
+		const result = await auth.linkGoogle();
+		// Bei Erfolg leitet Supabase den Browser bereits weiter — dieser Code läuft dann
+		// nicht mehr weiter. Nur der Fehlerfall bleibt auf der Seite sichtbar.
+		if (!result.ok) {
+			linkState = 'error';
+			linkError = result.error ?? 'Unbekannter Fehler';
+		}
+	}
+
+	async function signInGoogle() {
+		googleSignInState = 'working';
+		googleSignInError = '';
+		const result = await auth.signInWithGoogle();
+		if (!result.ok) {
+			googleSignInState = 'error';
+			googleSignInError = result.error ?? 'Unbekannter Fehler';
+		}
+	}
 </script>
 
 <svelte:head>
@@ -148,45 +188,82 @@
 
 		<section class="warn">
 			<h2>Dieses Konto sichern</h2>
-			<p class="lede">
-				Mit diesem Code öffnest du <strong>deine eigenen</strong> Gebete und Favoriten auf einem weiteren Gerät.
-				Behandle ihn wie ein Passwort und teile ihn mit niemandem — das ist etwas anderes als der Einladungslink
-				oben: Wer diesen Code hat, sieht deine privaten Gebete, nicht nur seine eigenen.
-			</p>
-			{#if !revealed}
-				<button type="button" class="primary" onclick={() => (revealed = true)}>Code anzeigen</button>
+			{#if auth.googleLinked}
+				<p class="success">✔ Über Google gesichert — melde dich auf einem weiteren Gerät einfach mit demselben Google-Konto an.</p>
 			{:else}
-				<code class="code">{auth.recoveryCode}</code>
-				<button type="button" class="secondary" onclick={copyCode}>
-					{copyState === 'copied' ? 'Kopiert' : 'Code kopieren'}
-				</button>
+				<p class="lede">
+					Mit diesem Code öffnest du <strong>deine eigenen</strong> Gebete und Favoriten auf einem weiteren Gerät.
+					Behandle ihn wie ein Passwort und teile ihn mit niemandem — das ist etwas anderes als der Einladungslink
+					oben: Wer diesen Code hat, sieht deine privaten Gebete, nicht nur seine eigenen.
+				</p>
+				{#if !revealed}
+					<button type="button" class="primary" onclick={() => (revealed = true)}>Code anzeigen</button>
+				{:else}
+					<code class="code">{auth.recoveryCode}</code>
+					<button type="button" class="secondary" onclick={copyCode}>
+						{copyState === 'copied' ? 'Kopiert' : 'Code kopieren'}
+					</button>
+				{/if}
 			{/if}
 		</section>
 
-		<section>
-			<h2>Anderes eigenes Gerät verbinden</h2>
-			<p class="lede">Code von einem bereits eingerichteten Gerät hier eintragen, um dieselben Gebete zu laden.</p>
-			<div class="restore-row">
-				<input type="text" bind:value={restoreInput} placeholder="Wiederherstellungs-Code einfügen" />
-				<button type="button" class="primary" onclick={attemptRestore} disabled={restoreState === 'working'}>
-					Verbinden
+		{#if !auth.googleLinked}
+			<section>
+				<h2>Mit Google verknüpfen</h2>
+				<p class="lede">
+					Verknüpfe dieses Konto mit deinem Google-Konto — danach meldest du dich auf weiteren Geräten einfach mit
+					Google an, ohne Code.
+				</p>
+				<button type="button" class="primary" onclick={linkGoogle} disabled={linkState === 'working'}>
+					Mit Google verknüpfen
 				</button>
-			</div>
+				{#if linkState === 'error'}
+					<p class="error">{linkError}</p>
+				{/if}
+			</section>
+		{/if}
 
-			{#if restorePending}
-				<div class="confirm">
-					<p>{restoreWarning}</p>
-					<div class="confirm-actions">
-						<button type="button" class="danger" onclick={restore}>Trotzdem verbinden</button>
-						<button type="button" class="secondary" onclick={cancelRestore}>Abbrechen</button>
-					</div>
+		{#if !auth.googleLinked}
+			<section>
+				<h2>Anderes eigenes Gerät verbinden</h2>
+				<p class="lede">
+					Mit Google anmelden, falls dieses Konto bereits verknüpft ist — oder Code von einem bereits
+					eingerichteten Gerät hier eintragen.
+				</p>
+				<button
+					type="button"
+					class="secondary"
+					onclick={signInGoogle}
+					disabled={googleSignInState === 'working'}
+				>
+					Mit Google anmelden
+				</button>
+				{#if googleSignInState === 'error'}
+					<p class="error">{googleSignInError}</p>
+				{/if}
+
+				<div class="restore-row">
+					<input type="text" bind:value={restoreInput} placeholder="Wiederherstellungs-Code einfügen" />
+					<button type="button" class="primary" onclick={attemptRestore} disabled={restoreState === 'working'}>
+						Verbinden
+					</button>
 				</div>
-			{:else if restoreState === 'error'}
-				<p class="error">{restoreError}</p>
-			{:else if restoreState === 'done'}
-				<p class="success">Verbunden — deine Gebete werden gerade geladen.</p>
-			{/if}
-		</section>
+
+				{#if restorePending}
+					<div class="confirm">
+						<p>{restoreWarning}</p>
+						<div class="confirm-actions">
+							<button type="button" class="danger" onclick={restore}>Trotzdem verbinden</button>
+							<button type="button" class="secondary" onclick={cancelRestore}>Abbrechen</button>
+						</div>
+					</div>
+				{:else if restoreState === 'error'}
+					<p class="error">{restoreError}</p>
+				{:else if restoreState === 'done'}
+					<p class="success">Verbunden — deine Gebete werden gerade geladen.</p>
+				{/if}
+			</section>
+		{/if}
 	{/if}
 </div>
 
