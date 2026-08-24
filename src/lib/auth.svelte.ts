@@ -50,6 +50,14 @@ class AuthState {
 		return this.session?.refresh_token ?? null;
 	}
 
+	/** Stabile Konto-Kennung (die interne Nutzer-ID) — anders als der Wiederherstellungs-Code
+	 *  bleibt sie über Sitzungserneuerungen hinweg gleich, taugt also zum Vergleichen, ob zwei
+	 *  Geräte am selben Konto hängen. Erlaubt für sich genommen keinen Zugriff, kann also
+	 *  gefahrlos angezeigt werden. */
+	get accountId(): string | null {
+		return this.session?.user?.id ?? null;
+	}
+
 	async restoreOnThisDevice(code: string): Promise<{ ok: boolean; error?: string }> {
 		if (!supabase) return { ok: false, error: 'Supabase ist noch nicht konfiguriert.' };
 		const trimmed = code.trim();

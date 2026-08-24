@@ -96,6 +96,16 @@
 	{:else if !auth.ready}
 		<p class="notice">Richte deinen privaten Bereich ein …</p>
 	{:else}
+		{#if auth.accountId}
+			<p class="account-id">
+				Konto-Kennung: <code>…{auth.accountId.slice(-8)}</code>
+				<span class="hint">
+					— stimmt diese Kennung auf allen deinen Geräten überein, nutzen sie dasselbe Konto. Anders als der
+					Wiederherstellungs-Code unten ändert sie sich nicht und erlaubt für sich allein keinen Zugriff.
+				</span>
+			</p>
+		{/if}
+
 		<section>
 			<h2>Familie &amp; Freunde einladen</h2>
 			<p class="lede">
@@ -194,6 +204,21 @@
 	.notice {
 		color: var(--ink-soft);
 		font-size: 0.95rem;
+	}
+	.account-id {
+		font-size: 0.85rem;
+		color: var(--ink-soft);
+		margin: 0 0 1.4rem;
+	}
+	.account-id code {
+		font-family: var(--font-mono);
+		background: var(--paper-raised);
+		border: 1px solid var(--line);
+		border-radius: 6px;
+		padding: 0.1rem 0.4rem;
+	}
+	.account-id .hint {
+		color: var(--ink-faint);
 	}
 	.code {
 		display: block;
