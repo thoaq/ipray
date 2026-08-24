@@ -1,3 +1,9 @@
 [build]
   command = "npm run build"
   publish = "build"
+
+[build.environment]
+  # PUBLIC_SUPABASE_URL/ANON_KEY sind bewusst öffentlich (siehe .env.example) und landen
+  # absichtlich im Client-Bundle — Netlifys Secrets Scanner kennt diese Unterscheidung nicht
+  # und würde den Build sonst fälschlich als "exposed secret" ablehnen.
+  SECRETS_SCAN_OMIT_KEYS = "PUBLIC_SUPABASE_URL,PUBLIC_SUPABASE_ANON_KEY"
