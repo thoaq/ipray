@@ -293,7 +293,50 @@ iPhone hatte in der Zwischenzeit aber durch andere, neuere Änderungen längst e
 fortgeschrittenen Cursor — die jetzt "verspätet" ankommende alte Zeile fiel für den
 inkrementellen Pull dauerhaft durchs Raster, genau wie beim bereits behobenen
 Wiederherstellungs-Code-Bug (Commit `dd26ad7`), nur diesmal ohne Kontowechsel als Auslöser.
-Fix: `forceFullResync()` in `src/lib/sync.ts` (setzt nur `syncMeta` zurück, lässt lokale Daten
-unangetastet) plus ein immer sichtbarer „Alle Daten neu abgleichen"-Button unter „Konto" →
-„Abgleich mit anderen Geräten" (`src/routes/konto/+page.svelte`) als generelles
-Troubleshooting-Werkzeug für diese Bug-Klasse.
+Fix: `forceFullResync()` in `src/lib/sync.ts` plus ein immer sichtbarer „Alle Daten neu
+abgleichen"-Button unter „Konto" → „Abgleich mit anderen Geräten"
+(`src/routes/konto/+page.svelte`) als generelles Troubleshooting-Werkzeug für diese
+Bug-Klasse. Ursprünglich setzte die Funktion nur `syncMeta` zurück — nach der
+Konten-Zusammenführung unten (SQL-`DELETE`s ohne Tombstone) reichte das nicht mehr, weil
+lokal per Pull nie gelöscht wird, nur hinzugefügt/aktualisiert wird. Seit 2026-08-25 lädt
+`forceFullResync()` darum zuerst alle noch nicht hochgeladenen lokalen Änderungen hoch und
+leert danach die komplette lokale Tabelle (`prayers`/`favorites`/`categoryOverrides`), bevor
+neu vom Server gezogen wird — behebt beide Varianten von hängen gebliebenem Zustand
+(verspätete Zeile *und* lokale Karteileichen, die serverseitig gar nicht mehr existieren).
+
+**Kaputter PWA-Navigationsfallback — behoben (2026-08-25), aber nicht die eigentliche
+Ursache.** Zusätzlich fiel ein kaputter Service-Worker-Navigationsfallback auf
+(`workbox.navigateFallback` zeigte auf eine `index.html`, die es bei `adapter-netlify`
+gar nicht gibt — Fix in `vite.config.ts`). Ein echter, es wert behoben zu werden, aber am
+Ende **nicht** die Ursache für das iPhone-Problem hier.
+
+**Tatsächliche Ursache gefunden und behoben (2026-08-25): Gebete auf 9 verwaiste Konten
+verstreut.** Auch nach PK-Fix, Neu-Abgleich-Button und Navigationsfallback-Fix zeigte das
+iPhone weiter einen alten Stand — sogar nach vollständigem Löschen der Safari-Websitedaten
+(Service Worker, Caches, IndexedDB, lokale Sitzung, alles weg), was jede
+Caching-Erklärung endgültig ausschloss. Eine direkte SQL-Abfrage
+(`select user_id, count(*) from prayers group by user_id`) zeigte den wahren Befund: die
+über lange Zeit wirkende Sitzungspersistenz-Instabilität (siehe oben) hatte nicht nur
+einmal, sondern wiederholt neue, leere anonyme Konten erzeugt — insgesamt **9 verschiedene
+Konten**, die zusammen alle ~52 eigenen Gebete des Nutzers hielten (verteilt auf 24, 12, 5,
+4, 2, 2, 1, 1, 1 Zeilen). Das jetzt mit Google verknüpfte „Haupt"-Konto hatte davon nur 2.
+Dass der PC lokal 29 Gebete zeigte, war eine Illusion des lokalen Caches: Dexie hatte über
+die Zeit Reste mehrerer vergangener Identitäten angesammelt, ohne dass je aufgeräumt wurde
+— echte, tatsächlich synchronisierte Daten waren das nicht.
+
+Behoben durch eine einmalige, manuelle SQL-Zusammenführung (bewusst **keine**
+Repo-Migration — reine Daten-Einmalbereinigung für dieses eine Konto, keine
+wiederholbare Schema-Änderung): alle `prayers`/`favorites`/`category_overrides`-Zeilen auf
+das eine Zielkonto umgehängt, dabei Duplikate dedupliziert (gleicher `overrides_slug` unter
+mehreren Konten geforkt → neueste Fassung behalten; gleiche `id` unter zwei Konten, vom
+späten Nach-PK-Fix-Re-Push → neueste behalten; gleicher Favorit/dieselbe
+Kategorie-Anpassung mehrfach vorhanden → `INSERT … ON CONFLICT DO UPDATE`, vorher pro
+Schlüssel dedupliziert, da Postgres denselben Konfliktschlüssel nicht zweimal in derselben
+Anweisung behandeln kann). Nach der Zusammenführung: eine `user_id`, 46 Zeilen, auf beiden
+Geräten per „Alle Daten neu abgleichen" bestätigt.
+
+**Lehre für künftige Fälle:** Zeigt ein Gerät „alten Stand", der auch ein vollständiges
+Zurücksetzen des lokalen Speichers übersteht, direkt mit `select user_id, count(*) from
+prayers group by user_id` (bzw. für `favorites`/`category_overrides` entsprechend)
+nachsehen, ob Daten über mehrere Konten verstreut sind — spart gegenüber dem schrittweisen
+Ausschlussverfahren (Cache, Service Worker, Sync-Cursor, …) mehrere Runden.

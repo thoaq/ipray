@@ -1,7 +1,7 @@
 import { supabase, supabaseConfigured } from './supabaseClient';
 import { db } from './db';
 import { auth } from './auth.svelte';
-import { isSyncPaused } from './syncControl';
+import { isSyncPaused, pauseSync, resumeSync } from './syncControl';
 
 // Push/Pull-Sync zwischen dem lokalen Cache (Dexie/IndexedDB) und Supabase.
 // Kein Echtzeit-Abgleich nötig — nur eine Person schreibt je ihre eigenen Zeilen,
@@ -17,15 +17,30 @@ export function requestSync() {
 	void runSync();
 }
 
-/** Setzt den Pull-Cursor jeder Tabelle zurück und stößt einen kompletten Neu-Abgleich an —
- *  rührt lokale Daten selbst nicht an (auch nicht dirty-Zeilen, die stehen bleiben und beim
- *  nächsten Sync wie gewohnt gepusht werden). Nötig, wenn eine Zeile mit einem alten
- *  `updated_at` erst nachträglich erfolgreich hochgeladen wird (z. B. weil ein Push zuvor an
- *  RLS scheiterte und erst nach einem Fix durchging): der reguläre inkrementelle Pull
- *  (`gt('updated_at', since)`) würde eine so "verspätete" Zeile für immer überspringen, da der
- *  Cursor auf anderen Geräten inzwischen längst weiter steht als ihr alter Zeitstempel. */
+/** Lädt zuerst alle lokal noch nicht hochgeladenen Änderungen hoch, leert danach den
+ *  kompletten lokalen Cache (nicht nur den Pull-Cursor) und baut ihn frisch vom Server auf.
+ *  Nötig für zwei verschiedene Arten von "hängen gebliebenen" Zuständen: (1) eine Zeile mit
+ *  altem `updated_at`, die erst nachträglich erfolgreich gepusht wurde (z. B. weil ein Push
+ *  zuvor an RLS scheiterte) — der reguläre inkrementelle Pull (`gt('updated_at', since)`)
+ *  würde sie für immer überspringen, da der Cursor auf anderen Geräten längst weiter steht;
+ *  (2) lokale Zeilen, die serverseitig gar nicht mehr existieren (z. B. nach einer manuellen
+ *  Datenbereinigung/Konten-Zusammenführung per SQL ohne Tombstone) — ein reiner
+ *  Cursor-Reset lässt solche Karteileichen unangetastet, weil Pull nur hinzufügt/aktualisiert,
+ *  nie von sich aus lokal löscht. Das vollständige Leeren der Tabellen behebt beides. */
 export async function forceFullResync() {
-	await db.syncMeta.clear();
+	if (!supabaseConfigured || !supabase) return;
+	const userId = auth.userId;
+	if (!userId) return;
+	pauseSync();
+	try {
+		await pushPrayers(userId);
+		await pushFavorites(userId);
+		await pushCategoryOverrides(userId);
+		await Promise.all([db.prayers.clear(), db.favorites.clear(), db.categoryOverrides.clear()]);
+		await db.syncMeta.clear();
+	} finally {
+		resumeSync();
+	}
 	requestSync();
 }
 
