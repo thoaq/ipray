@@ -217,7 +217,25 @@ Gerät, das schon korrekt mit dem Hauptkonto verbunden war, fiel irgendwann unbe
 neues, leeres anonymes Konto zurück (`auth.users` zeigte danach zwei getrennte Zeilen statt
 einer). Kein Fehler beim Verbinden selbst, sondern die Sitzung hält auf Dauer nicht — vermutlich
 iOS, das Website-Daten unter Speicherdruck oder nach längerer Nichtnutzung verwirft. Das ist der
-eigentliche Kern des Mehrgeräte-Problems, nicht die Pull-Logik.
+eigentliche Kern des Mehrgeräte-Problems, nicht die Pull-Logik. **Möglicher Mitverursacher
+gefunden und behoben, siehe direkt unten** — falls sich das Problem nach dessen Deploy nicht
+mehr zeigt, war es das.
+
+**Kaputter Service-Worker-Navigationsfallback — behoben (2026-08-24).** Beim Debuggen des
+iPhone-Problems fiel in der PC-Konsole `Uncaught (in promise) non-precached-url … index.html`
+auf. Ursache: `vite-plugin-pwa` registriert standardmäßig einen Navigations-Fallback auf
+`index.html`, was eine klassische Single-Page-App mit genau einer statischen `index.html`
+voraussetzt — dieses Projekt nutzt aber `adapter-netlify` und rendert jede Seite serverseitig,
+es gibt gar keine `index.html` im Build. Jede Navigation, die der Service Worker abfängt, lief
+dadurch ins Leere. Auf dem PC selten bemerkt (SvelteKit navigiert im Browser meist per
+Soft-Navigation, ohne den Service Worker zu durchlaufen), auf dem iPhone als installierte PWA
+aber potenziell bei **jedem** App-Start relevant, da das eine echte Navigation ist — ein starker
+Kandidat dafür, wieso die App dort wiederholt auf einen alten/kaputten Stand zurückfiel, evtl.
+auch für einen Teil der oben beschriebenen Sitzungsverlust-Symptome. Fix in `vite.config.ts`:
+`workbox.navigateFallback` explizit deaktiviert, Navigationen gehen jetzt reell ins Netz statt
+gegen eine nicht existierende, precachte Datei zu laufen. Nach dem Deploy braucht das iPhone
+vermutlich ein bis zwei vollständige Neustarts der App (nicht nur in den Hintergrund legen,
+sondern aus der App-Übersicht schließen), bis der neue Service Worker aktiv übernimmt.
 
 **Optionale Google-Anmeldung — umgesetzt und live bestätigt (2026-08-24).**
 Statt die Sitzungspersistenz selbst robuster zu machen, gibt es jetzt eine zuverlässigere

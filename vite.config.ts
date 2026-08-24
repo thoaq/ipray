@@ -33,6 +33,14 @@ export default defineConfig({
 			},
 			workbox: {
 				globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+				// vite-plugin-pwa nimmt sonst standardmäßig ein klassisches SPA mit einer
+				// einzelnen index.html an und registriert dafür einen Navigations-Fallback —
+				// die gibt es hier nicht (adapter-netlify rendert jede Seite serverseitig).
+				// Ohne dieses Abschalten wirft der Service Worker bei jeder Navigation
+				// "non-precached-url: index.html" und die Anfrage schlägt fehl, statt normal
+				// ins Netz zu gehen — auf dem iPhone (jeder App-Start ist eine Navigation)
+				// vermutlich Ursache für dauerhaft veraltete Inhalte.
+				navigateFallback: undefined,
 				runtimeCaching: [
 					{
 						urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/i,
