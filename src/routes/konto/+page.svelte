@@ -1,8 +1,21 @@
 <script lang="ts">
+	import { liveQuery } from 'dexie';
 	import { auth } from '$lib/auth.svelte';
 	import { supabaseConfigured } from '$lib/supabaseClient';
 	import { personalPrayers } from '$lib/personalPrayers.svelte';
 	import { favorites } from '$lib/favorites.svelte';
+	import { categoryOverrides } from '$lib/categoryOverrides.svelte';
+	import { db } from '$lib/db';
+
+	// Nur für die Anzeige unten: Favoriten-Rohzeilen inkl. dirty-Flag, da favorites.svelte nur
+	// die aktiven IDs ohne Sync-Status nach außen gibt.
+	let unsyncedFavoriteCount = $state(0);
+	$effect(() => {
+		const sub = liveQuery(() => db.favorites.where('dirty').equals(1).count()).subscribe({
+			next: (n) => (unsyncedFavoriteCount = n)
+		});
+		return () => sub.unsubscribe();
+	});
 
 	let revealed = $state(false);
 	let copyState = $state<'idle' | 'copied'>('idle');
@@ -16,6 +29,13 @@
 	const localUnsyncedPrayerCount = $derived(personalPrayers.items.filter((p) => p.dirty === 1).length);
 	const localFavoriteCount = $derived(favorites.activeIds.size);
 	const hasLocalContent = $derived(localPrayerCount > 0 || localFavoriteCount > 0);
+
+	// Diagnose-Anzeige: Änderungen, die lokal auf diesem Gerät liegen, aber noch nicht
+	// erfolgreich zu Supabase hochgeladen wurden — sonst ist das von außen unsichtbar
+	// (siehe Sync-Fehlersuche: fehlende Daten auf einem anderen Gerät können daran liegen,
+	// dass sie hier nie ankamen, nicht daran, dass das andere Gerät sie falsch abholt).
+	const unsyncedCategoryOverrideCount = $derived(categoryOverrides.items.filter((c) => c.dirty === 1).length);
+	const totalUnsynced = $derived(localUnsyncedPrayerCount + unsyncedFavoriteCount + unsyncedCategoryOverrideCount);
 
 	const restoreWarning = $derived.by(() => {
 		const parts: string[] = [];
@@ -106,6 +126,15 @@
 			</p>
 		{/if}
 
+		{#if totalUnsynced > 0}
+			<p class="unsynced-warning">
+				⚠ {totalUnsynced} {totalUnsynced === 1 ? 'Änderung ist' : 'Änderungen sind'} auf diesem Gerät noch nicht
+				mit der Cloud synchronisiert — solange das so bleibt, sieht kein anderes Gerät diese
+				{totalUnsynced === 1 ? 'Änderung' : 'Änderungen'}. Meist reicht es, kurz online und die App geöffnet zu
+				lassen.
+			</p>
+		{/if}
+
 		<section>
 			<h2>Familie &amp; Freunde einladen</h2>
 			<p class="lede">
@@ -191,6 +220,15 @@
 	section.warn {
 		border-color: #d9b38c;
 		background: color-mix(in srgb, #a33b3b 6%, var(--paper-raised));
+	}
+	.unsynced-warning {
+		font-size: 0.85rem;
+		color: var(--ink);
+		background: color-mix(in srgb, #a33b3b 8%, var(--paper-raised));
+		border: 1px solid #d9b38c;
+		border-radius: 10px;
+		padding: 0.7rem 0.9rem;
+		margin: 0 0 1.4rem;
 	}
 	h2 {
 		font-size: 1.1rem;
