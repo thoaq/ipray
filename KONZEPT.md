@@ -5,7 +5,9 @@ Bibliothek an Gebeten, dazu für jede Person eine private, synchronisierte eigen
 schön gestaltet, sofort auffindbar, auch ganz ohne Netz.
 
 **Stand:** 2026-08-24 — Phasen 1–3 aus der ursprünglichen Roadmap sind umgesetzt und live.
-Aktuell in Arbeit: Zuverlässigkeit der Mehrgeräte-Synchronisierung, siehe „Offene Punkte".
+Google-Anmeldung als zuverlässiger Mehrgeräte-Weg ist ergänzt, die zugehörigen Sync-Bugs sind
+behoben; die zugrunde liegende iOS-Sitzungspersistenz-Ursache bleibt als bekannte Einschränkung
+bestehen (Google-Konto umgeht sie, siehe „Offene Punkte").
 
 ---
 
@@ -217,7 +219,7 @@ einer). Kein Fehler beim Verbinden selbst, sondern die Sitzung hält auf Dauer n
 iOS, das Website-Daten unter Speicherdruck oder nach längerer Nichtnutzung verwirft. Das ist der
 eigentliche Kern des Mehrgeräte-Problems, nicht die Pull-Logik.
 
-**Optionale Google-Anmeldung — Code fertig, Einrichtung in Supabase/Google Cloud noch offen.**
+**Optionale Google-Anmeldung — umgesetzt und live bestätigt (2026-08-24).**
 Statt die Sitzungspersistenz selbst robuster zu machen, gibt es jetzt eine zuverlässigere
 Alternative zum rein anonymen Zugang: Supabase-OAuth mit Google, über
 `supabase.auth.linkIdentity()` an das **bestehende** anonyme Konto verknüpft (gleiche
@@ -232,8 +234,9 @@ die einzige Absicherung); bei verknüpften Konten wird die Code-Anzeige durch ei
 „Über Google gesichert" ersetzt und „Anderes Gerät verbinden" ausgeblendet, da nicht mehr
 nötig. Keine RLS-Änderung nötig.
 
-Damit das funktioniert, fehlt noch eine einmalige, manuelle Einrichtung (kann Claude nicht
-selbst tun):
+Einmalige, manuelle Einrichtung in Supabase/Google Cloud (nicht durch Claude erledigbar) —
+durchgeführt und bestätigt: Verknüpfen und Anmelden funktionieren auf PC und iPhone mit
+übereinstimmender Konto-Kennung.
 1. In der [Google Cloud Console](https://console.cloud.google.com/apis/credentials) ein
    OAuth-2.0-Client-ID vom Typ „Webanwendung" anlegen. Autorisierte Redirect-URI:
    `https://niqtvoihoiicalmyxcwu.supabase.co/auth/v1/callback`.
@@ -250,11 +253,29 @@ selbst tun):
    eintragen — sonst leitet Google zwar erfolgreich zu Supabase zurück, Supabase aber nicht
    weiter zur App.
 
-**Separat, unabhängig vom Auth-Fix — `prayers`-Tabelle nicht pro Konto geschützt.** Anders als
-`favorites`/`category_overrides` (Primärschlüssel `(user_id, slug/item_id)`) hat `prayers` nur
-`id` als Primärschlüssel. Überlebt eine lokale Zeile (z. B. durch obigen
-Sitzungspersistenz-Bug) einen Kontowechsel auf dem Gerät und wird dort weiter bearbeitet,
-kollidiert ein späteres Hochladen mit der bereits bestehenden, fremden Zeile — RLS blockiert
-das zu Recht, aber dauerhaft (`403`, „row-level security policy (USING expression)"), nicht nur
-vorübergehend. Geplanter Fix: Primärschlüssel auf `(user_id, id)` umstellen (neue Migration),
-damit dieselbe `id` unter verschiedenen Konten nie kollidieren kann.
+**`prayers`-Tabelle nicht pro Konto geschützt — behoben (2026-08-24).** Anders als
+`favorites`/`category_overrides` (Primärschlüssel `(user_id, slug/item_id)`) hatte `prayers`
+nur `id` als Primärschlüssel. Überlebt eine lokale Zeile (z. B. durch die
+Sitzungspersistenz-Instabilität eines anderen, per Wiederherstellungs-Code verbundenen Geräts)
+einen Kontowechsel, kollidierte ein späteres Hochladen mit der bereits unter dem falschen Konto
+bestehenden Zeile — RLS blockierte das zu Recht, aber dauerhaft (`403`, „row-level security
+policy (USING expression)"), nicht nur vorübergehend. Am PC nach dem Google-Verknüpfen
+tatsächlich aufgetreten (und dadurch indirekt auch Ursache dafür, dass das iPhone noch einen
+alten Kategorien-Stand zeigte — Kategorien stecken im `kategorie`-Feld der Gebete, die nie
+erfolgreich hochgeladen wurden). Fix in `supabase/migrations/0006_prayers_composite_pk.sql`:
+Primärschlüssel auf `(user_id, id)` umgestellt, damit dieselbe `id` unter verschiedenen Konten
+nie kollidieren kann — eingespielt und bestätigt: kein `403` mehr beim Push.
+
+**Nachfolgebug — "verspätete" Zeile bleibt trotz erfolgreichem Push für andere Geräte
+unsichtbar (behoben, 2026-08-24).** Nach dem PK-Fix ging der Push auf dem PC zwar durch, das
+iPhone zeigte aber weiterhin den alten Stand. Ursache: `updated_at` einer Zeile ist zugleich der
+Inkrementell-Pull-Cursor (`gt('updated_at', since)` in `pullPrayers()`/`src/lib/sync.ts`). Die
+zuvor blockierte Zeile trug noch ihren ursprünglichen (alten) Bearbeitungs-Zeitstempel; das
+iPhone hatte in der Zwischenzeit aber durch andere, neuere Änderungen längst einen weiter
+fortgeschrittenen Cursor — die jetzt "verspätet" ankommende alte Zeile fiel für den
+inkrementellen Pull dauerhaft durchs Raster, genau wie beim bereits behobenen
+Wiederherstellungs-Code-Bug (Commit `dd26ad7`), nur diesmal ohne Kontowechsel als Auslöser.
+Fix: `forceFullResync()` in `src/lib/sync.ts` (setzt nur `syncMeta` zurück, lässt lokale Daten
+unangetastet) plus ein immer sichtbarer „Alle Daten neu abgleichen"-Button unter „Konto" →
+„Abgleich mit anderen Geräten" (`src/routes/konto/+page.svelte`) als generelles
+Troubleshooting-Werkzeug für diese Bug-Klasse.

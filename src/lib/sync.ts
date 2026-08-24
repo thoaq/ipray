@@ -17,6 +17,18 @@ export function requestSync() {
 	void runSync();
 }
 
+/** Setzt den Pull-Cursor jeder Tabelle zurück und stößt einen kompletten Neu-Abgleich an —
+ *  rührt lokale Daten selbst nicht an (auch nicht dirty-Zeilen, die stehen bleiben und beim
+ *  nächsten Sync wie gewohnt gepusht werden). Nötig, wenn eine Zeile mit einem alten
+ *  `updated_at` erst nachträglich erfolgreich hochgeladen wird (z. B. weil ein Push zuvor an
+ *  RLS scheiterte und erst nach einem Fix durchging): der reguläre inkrementelle Pull
+ *  (`gt('updated_at', since)`) würde eine so "verspätete" Zeile für immer überspringen, da der
+ *  Cursor auf anderen Geräten inzwischen längst weiter steht als ihr alter Zeitstempel. */
+export async function forceFullResync() {
+	await db.syncMeta.clear();
+	requestSync();
+}
+
 async function runSync() {
 	if (syncing) {
 		pendingRerun = true;

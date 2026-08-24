@@ -6,6 +6,7 @@
 	import { favorites } from '$lib/favorites.svelte';
 	import { categoryOverrides } from '$lib/categoryOverrides.svelte';
 	import { db } from '$lib/db';
+	import { forceFullResync } from '$lib/sync';
 
 	// Nur für die Anzeige unten: Favoriten-Rohzeilen inkl. dirty-Flag, da favorites.svelte nur
 	// die aktiven IDs ohne Sync-Status nach außen gibt.
@@ -28,6 +29,7 @@
 	let linkError = $state('');
 	let googleSignInState = $state<'idle' | 'working' | 'error'>('idle');
 	let googleSignInError = $state('');
+	let resyncState = $state<'idle' | 'working' | 'done'>('idle');
 
 	// Nach dem Rücksprung von Google kann Supabase einen Fehler statt eines Tokens in der URL
 	// anhängen (z. B. abgebrochen, oder das Google-Konto ist schon einem anderen Konto
@@ -138,6 +140,13 @@
 			googleSignInError = result.error ?? 'Unbekannter Fehler';
 		}
 	}
+
+	async function resync() {
+		resyncState = 'working';
+		await forceFullResync();
+		resyncState = 'done';
+		setTimeout(() => (resyncState = 'idle'), 2500);
+	}
 </script>
 
 <svelte:head>
@@ -174,6 +183,17 @@
 				lassen.
 			</p>
 		{/if}
+
+		<section>
+			<h2>Abgleich mit anderen Geräten</h2>
+			<p class="lede">
+				Zeigt ein anderes Gerät trotz gleicher Konto-Kennung nicht den aktuellen Stand, hilft meist ein
+				erzwungener Neu-Abgleich statt zu warten.
+			</p>
+			<button type="button" class="secondary" onclick={resync} disabled={resyncState === 'working'}>
+				{resyncState === 'done' ? 'Abgleich angestoßen ✔' : 'Alle Daten neu abgleichen'}
+			</button>
+		</section>
 
 		<section>
 			<h2>Familie &amp; Freunde einladen</h2>
