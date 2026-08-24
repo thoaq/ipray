@@ -9,6 +9,23 @@ import { pauseSync, resumeSync } from './syncControl';
 // Gerät einträgt, um dieselbe Sitzung wiederherzustellen — kein eigener Server-Baustein
 // nötig, robuster als ein selbst gebautes Token-System.
 
+// Zusätzlich zu this.session (nur im Speicher) in localStorage gemerkt: this.session ist
+// beim App-Start kurzzeitig null, bis getSession()/bootstrapAnonymous() durchgelaufen sind.
+// Verbindet man in genau diesem Fenster ein Gerät neu, läse restoreOnThisDevice() sonst eine
+// leere "vorige Identität" — obwohl Dexie noch echte Daten eines vorigen Kontos enthält — und
+// würde das Aufräumen fälschlich überspringen.
+const LAST_ACCOUNT_KEY = 'gebetsraum:lastAccountId';
+
+function rememberAccountId(userId: string | undefined) {
+	if (typeof window === 'undefined' || !userId) return;
+	localStorage.setItem(LAST_ACCOUNT_KEY, userId);
+}
+
+function lastKnownAccountId(): string | undefined {
+	if (typeof window === 'undefined') return undefined;
+	return localStorage.getItem(LAST_ACCOUNT_KEY) ?? undefined;
+}
+
 class AuthState {
 	session: Session | null = $state(null);
 	ready = $state(false);
@@ -25,11 +42,13 @@ class AuthState {
 
 		supabase.auth.onAuthStateChange((_event, session) => {
 			this.session = session;
+			rememberAccountId(session?.user?.id);
 		});
 
 		supabase.auth.getSession().then(({ data }) => {
 			if (data.session) {
 				this.session = data.session;
+				rememberAccountId(data.session.user?.id);
 				this.ready = true;
 			} else {
 				this.bootstrapAnonymous();
@@ -41,7 +60,10 @@ class AuthState {
 		if (!supabase) return;
 		const { data, error } = await supabase.auth.signInAnonymously();
 		if (error) this.error = error.message;
-		else this.session = data.session;
+		else {
+			this.session = data.session;
+			rememberAccountId(data.session?.user?.id);
+		}
 		this.ready = true;
 	}
 
@@ -67,7 +89,10 @@ class AuthState {
 		// während des Aufrufs aus, der this.session sonst zu früh auf die neue Identität
 		// umstellen würde. Sync bleibt bis zum Aufräumen pausiert, damit kein zeitgleicher
 		// Sync-Lauf lokale Reste der alten Identität unter der neuen Identität pusht.
-		const previousUserId = this.session?.user?.id;
+		// Fällt auf die in localStorage gemerkte Kennung zurück, falls this.session hier
+		// (noch) leer ist (z.B. direkt beim App-Start) — sonst gilt eine tatsächlich vorhandene
+		// vorige Identität fälschlich als "keine", und das Aufräumen unten wird übersprungen.
+		const previousUserId = this.session?.user?.id ?? lastKnownAccountId();
 		pauseSync();
 		try {
 			const { data, error } = await supabase.auth.refreshSession({ refresh_token: trimmed });
@@ -76,15 +101,16 @@ class AuthState {
 			}
 
 			if (previousUserId && previousUserId !== data.session.user.id) {
-				await Promise.all([
-					db.prayers.clear(),
-					db.favorites.clear(),
-					db.categoryOverrides.clear(),
-					db.syncMeta.clear()
-				]);
+				await Promise.all([db.prayers.clear(), db.favorites.clear(), db.categoryOverrides.clear()]);
 			}
+			// Pull-Cursor (syncMeta) immer zurücksetzen, unabhängig davon, ob sich die Identität hier
+			// sicher als "gewechselt" erkennen ließ — ein dabei stehen gebliebener alter Zeitstempel
+			// würde beim nächsten Pull ältere Zeilen des jetzt verbundenen Kontos dauerhaft ausschließen
+			// (gt('updated_at', since) lässt sie für immer verschwinden, nicht nur vorübergehend).
+			await db.syncMeta.clear();
 
 			this.session = data.session;
+			rememberAccountId(data.session.user?.id);
 			return { ok: true };
 		} finally {
 			resumeSync();
