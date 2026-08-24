@@ -4,7 +4,8 @@ Eine persönliche Gebets-App als Progressive Web App: eine kuratierte, von dir g
 Bibliothek an Gebeten, dazu für jede Person eine private, synchronisierte eigene Sammlung —
 schön gestaltet, sofort auffindbar, auch ganz ohne Netz.
 
-**Stand:** 2026-08-23 — Phasen 1–3 aus der ursprünglichen Roadmap sind umgesetzt und live.
+**Stand:** 2026-08-24 — Phasen 1–3 aus der ursprünglichen Roadmap sind umgesetzt und live.
+Aktuell in Arbeit: Zuverlässigkeit der Mehrgeräte-Synchronisierung, siehe „Offene Punkte".
 
 ---
 
@@ -162,6 +163,9 @@ Supabase-Abhängigkeit, sofort offline verfügbar. Die Zuordnung Schema → Date
 - Teilen (native Teilen-Funktion / Link kopieren), Drucken/PDF über den Browser-Druckdialog
 - Konto: Wiederherstellungs-Code fürs eigene Zweitgerät, Einladungslink zum Teilen mit
   Familie/Freunden — bewusst getrennt dargestellt, da beides unterschiedliche Bedeutung hat
+- Konto-Kennung (stabile Kurzform der `user_id`, ändert sich anders als der rotierende
+  Wiederherstellungs-Code nicht) zum Abgleichen, ob zwei Geräte wirklich dasselbe Konto nutzen
+- Warnhinweis unter „Konto", wenn lokale Änderungen noch nicht zu Supabase hochgeladen wurden
 - Erstbesuch-Einführung, „Zum Home-Bildschirm hinzufügen"-Hinweis (iOS-Anleitung /
   natives Install-Prompt auf Android)
 - Vollständig offline nutzbar nach dem ersten Laden
@@ -194,3 +198,42 @@ iPhone übertragen. Er ist bewusst nur ein Cache; die verbindliche Kopie eigener
 in Supabase. Ohne verbundenes Konto (z. B. direkt nach dem ersten Start) gibt es
 entsprechend noch keine Sicherung — der Wiederherstellungs-Code unter „Konto" ist die
 Absicherung dagegen.
+
+---
+
+## Offene Punkte (in Arbeit, Stand 2026-08-24)
+
+Beim Mehrgeräte-Einsatz (PC + iPhone) sind mehrere zusammenhängende Schwachstellen der
+anonymen Auth aufgefallen. Ein Teil ist bereits behoben, zwei größere Punkte stehen noch aus:
+
+**Bereits behoben** — siehe Commits `dd26ad7` (Wiederherstellungs-Logik: Pull-Cursor wurde
+beim Verbinden nicht zuverlässig zurückgesetzt, ältere Zeilen des verbundenen Kontos blieben
+für immer unsichtbar) und `6dd4f51` (Warnhinweis für nicht hochgeladene lokale Änderungen).
+
+**Ursache, noch offen — Sitzungspersistenz auf iOS unzuverlässig.** Mehrfach beobachtet: Ein
+Gerät, das schon korrekt mit dem Hauptkonto verbunden war, fiel irgendwann unbemerkt auf ein
+neues, leeres anonymes Konto zurück (`auth.users` zeigte danach zwei getrennte Zeilen statt
+einer). Kein Fehler beim Verbinden selbst, sondern die Sitzung hält auf Dauer nicht — vermutlich
+iOS, das Website-Daten unter Speicherdruck oder nach längerer Nichtnutzung verwirft. Das ist der
+eigentliche Kern des Mehrgeräte-Problems, nicht die Pull-Logik.
+
+**Geplanter Fix — optionale Google-Anmeldung.** Statt die Sitzungspersistenz selbst robuster zu
+machen, soll eine zuverlässigere Alternative zum rein anonymen Zugang dazukommen:
+Supabase-OAuth mit Google, über `supabase.auth.linkIdentity()` an das **bestehende** anonyme
+Konto verknüpft (gleiche `user_id`, keine Datenmigration nötig). Anonymer Zugang bleibt
+Standard beim ersten Öffnen des Einladungslinks (kein Bruch mit „sofort loslegen, kein
+Passwort"). Unter „Konto" kommt ein optionaler „Mit Google verknüpfen"-Schritt dazu — danach
+meldet man sich auf jedem weiteren Gerät einfach mit Google an, ohne rotierenden Code.
+Bestehende Funktionen bleiben für nicht verknüpfte Konten unverändert bestehen (Code ist dort
+weiterhin die einzige Absicherung); bei verknüpften Konten wird die Code-Anzeige durch einen
+Hinweis „Über Google gesichert" ersetzt und „Anderes Gerät verbinden" ausgeblendet, da nicht
+mehr nötig. Aufwand grob: ein guter halber bis ganzer Arbeitstag, keine RLS-Änderung nötig.
+
+**Separat, unabhängig vom Auth-Fix — `prayers`-Tabelle nicht pro Konto geschützt.** Anders als
+`favorites`/`category_overrides` (Primärschlüssel `(user_id, slug/item_id)`) hat `prayers` nur
+`id` als Primärschlüssel. Überlebt eine lokale Zeile (z. B. durch obigen
+Sitzungspersistenz-Bug) einen Kontowechsel auf dem Gerät und wird dort weiter bearbeitet,
+kollidiert ein späteres Hochladen mit der bereits bestehenden, fremden Zeile — RLS blockiert
+das zu Recht, aber dauerhaft (`403`, „row-level security policy (USING expression)"), nicht nur
+vorübergehend. Geplanter Fix: Primärschlüssel auf `(user_id, id)` umstellen (neue Migration),
+damit dieselbe `id` unter verschiedenen Konten nie kollidieren kann.
