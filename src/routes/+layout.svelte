@@ -85,6 +85,12 @@
 		border-bottom: 1px solid var(--line);
 	}
 
+	@media print {
+		.topbar {
+			display: none;
+		}
+	}
+
 	.row-brand {
 		display: flex;
 		align-items: center;

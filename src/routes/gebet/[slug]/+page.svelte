@@ -153,11 +153,10 @@
 				</div>
 			{/if}
 			<div class="text">
-				<span class="eyebrow"
-					>{view.kategorie}{#if view.unterkategorie} · {view.unterkategorie}{/if}{#if view.isOverride} · Eigene
-						Fassung{:else if view.own} · Eigenes Gebet{/if}</span
-				>
 				<h1>{view.titel}</h1>
+				<span class="eyebrow"
+					>{#if view.unterkategorie}{view.unterkategorie}{' · '}{/if}{view.kategorie}</span
+				>
 
 				<div class="body">{@html view.bodyHtml}</div>
 
@@ -272,12 +271,12 @@
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
 		color: var(--accent);
-		margin-bottom: 0.6rem;
+		margin-bottom: 1.3rem;
 	}
 
 	.text h1 {
 		font-size: clamp(1.9rem, 5vw, 2.6rem);
-		margin-bottom: 1.3rem;
+		margin-bottom: 0.4rem;
 	}
 
 	.body {
@@ -419,7 +418,8 @@
 			background: none;
 		}
 		.back,
-		.actions {
+		.actions,
+		.figure {
 			display: none;
 		}
 	}

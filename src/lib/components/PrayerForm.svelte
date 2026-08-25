@@ -244,7 +244,7 @@
 	{/if}
 
 	<label>
-		Unterkategorie <span class="optional">(optional)</span>
+		Untertitel <span class="optional">(optional)</span>
 		<input type="text" bind:value={unterkategorie} />
 	</label>
 
