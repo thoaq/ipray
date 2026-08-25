@@ -209,6 +209,8 @@
 		max-width: var(--content-max-wide);
 		margin: 0 auto;
 		padding: clamp(2rem, 5vw, 3.5rem) clamp(1.1rem, 4vw, 2rem) 5rem;
+		background: var(--accent-wash);
+		min-height: 100%;
 	}
 
 	.back {
@@ -313,7 +315,6 @@
 		text-decoration: none;
 	}
 	.tag:hover {
-		background: var(--accent-wash);
 		border-color: var(--accent);
 	}
 
@@ -414,6 +415,9 @@
 	}
 
 	@media print {
+		.page {
+			background: none;
+		}
 		.back,
 		.actions {
 			display: none;

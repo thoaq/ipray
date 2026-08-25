@@ -107,6 +107,8 @@
 		max-width: var(--content-max);
 		margin: 0 auto;
 		padding: clamp(2rem, 5vw, 3.5rem) clamp(1.1rem, 4vw, 1.5rem) 4rem;
+		background: var(--accent-wash);
+		min-height: 100%;
 	}
 
 	.back {
@@ -178,7 +180,7 @@
 	}
 
 	.card:hover {
-		background: var(--accent-wash);
+		background: var(--accent-soft);
 	}
 
 	.imgband {
